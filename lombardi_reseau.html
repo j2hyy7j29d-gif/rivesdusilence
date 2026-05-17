@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Les rives du silence — Réseau complet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0d12;
+    color: #e8e0d0;
+    font-family: 'Georgia', serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #canvas { width: 100%; height: 100vh; cursor: grab; }
+  #canvas:active { cursor: grabbing; }
+
+  .node circle {
+    stroke-width: 1px;
+    cursor: pointer;
+    transition: stroke-width 0.2s, opacity 0.3s;
+  }
+  .node circle:hover { stroke-width: 2.5px; }
+
+  .node text {
+    font-family: 'Arial', sans-serif;
+    pointer-events: none;
+    text-anchor: middle;
+    transition: opacity 0.3s;
+  }
+
+  .link {
+    stroke-opacity: 0.3;
+    fill: none;
+    stroke-width: 0.5px;
+    transition: stroke-opacity 0.3s, stroke-width 0.3s;
+  }
+
+  .link.highlighted { stroke-opacity: 0.95; stroke-width: 1.4px; }
+  .node.dimmed circle { opacity: 0.1; }
+  .node.dimmed text { opacity: 0.05; }
+  .link.dimmed { stroke-opacity: 0.03; }
+
+  /* Panneau info */
+  #panel {
+    position: fixed;
+    top: 0; right: -420px;
+    width: 380px;
+    height: 100vh;
+    background: rgba(10, 13, 18, 0.98);
+    border-left: 1px solid #2a2d35;
+    padding: 32px 24px;
+    transition: right 0.4s cubic-bezier(0.4,0,0.2,1);
+    overflow-y: auto;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+  #panel.open { right: 0; }
+
+  #panel h2 {
+    font-size: 12px;
+    font-family: 'Arial', sans-serif;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 8px;
+  }
+  #panel h3 {
+    font-size: 19px;
+    font-weight: normal;
+    color: #e8e0d0;
+    margin-bottom: 12px;
+    line-height: 1.35;
+    font-family: Georgia, serif;
+  }
+
+  .info-block {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.7;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #1e2028;
+  }
+
+  .parcelles-list {
+    margin-bottom: 24px;
+  }
+  .parcelles-list h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #555;
+    font-family: Arial, sans-serif;
+    margin-bottom: 12px;
+  }
+  .parcelle-item {
+    background: rgba(40,45,55,0.4);
+    border-left: 2px solid #c8b89a;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-family: Arial, sans-serif;
+    color: #aaa;
+    line-height: 1.5;
+  }
+  .parcelle-item strong { color: #e8e0d0; }
+  .parcelle-item a {
+    color: #7a9cbf;
+    text-decoration: none;
+    font-size: 10px;
+    display: inline-block;
+    margin-top: 4px;
+  }
+  .parcelle-item a:hover { color: #a8c5e0; text-decoration: underline; }
+
+  .relations h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #555;
+    font-family: Arial, sans-serif;
+    margin-bottom: 12px;
+  }
+  .relation-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    gap: 10px;
+  }
+  .rel-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .rel-label {
+    font-size: 11px;
+    color: #aaa;
+    font-family: Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .rel-type {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #555;
+    display: block;
+    margin-bottom: 3px;
+  }
+  #panel-close {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: none; border: 1px solid #333;
+    color: #777; font-size: 16px;
+    cursor: pointer; font-family: Arial;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #panel-close:hover { color: #e8e0d0; border-color: #888; }
+
+  /* Header */
+  #header {
+    position: fixed;
+    top: 24px; left: 32px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  #header h1 {
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 0.1em;
+    color: #888;
+    font-family: Georgia, serif;
+    font-style: italic;
+  }
+  #header .subtitle {
+    font-size: 10px;
+    color: #444;
+    font-family: Arial, sans-serif;
+    margin-top: 4px;
+    letter-spacing: 0.06em;
+  }
+  #header .stats {
+    font-size: 9px;
+    color: #333;
+    font-family: 'Courier New', monospace;
+    margin-top: 8px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Légende */
+  #legend {
+    position: fixed;
+    bottom: 24px; left: 32px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: rgba(15, 18, 25, 0.7);
+    padding: 12px 14px;
+    border-radius: 4px;
+    border: 1px solid #1a1d22;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 9px;
+    font-family: Arial, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #555;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid;
+    flex-shrink: 0;
+  }
+
+  /* Hint */
+  #hint {
+    position: fixed;
+    bottom: 24px; right: 32px;
+    font-size: 9px;
+    font-family: Arial, sans-serif;
+    color: #333;
+    text-align: right;
+    line-height: 1.8;
+    letter-spacing: 0.06em;
+    background: rgba(15, 18, 25, 0.7);
+    padding: 10px 14px;
+    border-radius: 4px;
+    border: 1px solid #1a1d22;
+  }
+
+  /* Filtres */
+  #filters {
+    position: fixed;
+    top: 24px; right: 32px;
+    z-index: 50;
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    max-width: 60vw;
+    justify-content: flex-end;
+  }
+  .filter-btn {
+    background: rgba(15, 18, 25, 0.8);
+    border: 1px solid #222;
+    color: #555;
+    font-size: 9px;
+    font-family: Arial, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 11px;
+    cursor: pointer;
+    border-radius: 14px;
+    transition: all 0.2s;
+  }
+  .filter-btn:hover {
+    border-color: #888;
+    color: #ccc;
+  }
+  .filter-btn.active {
+    border-color: #c8b89a;
+    color: #c8b89a;
+    background: rgba(200, 184, 154, 0.06);
+  }
+
+  /* Recherche */
+  #search {
+    position: fixed;
+    top: 70px; right: 32px;
+    z-index: 50;
+  }
+  #search input {
+    background: rgba(15, 18, 25, 0.85);
+    border: 1px solid #222;
+    color: #ccc;
+    font-size: 11px;
+    font-family: Arial, sans-serif;
+    padding: 8px 14px;
+    border-radius: 18px;
+    width: 220px;
+    outline: none;
+    transition: border-color 0.2s, width 0.3s;
+  }
+  #search input:focus {
+    border-color: #c8b89a;
+    width: 280px;
+  }
+  #search input::placeholder { color: #444; }
+
+  /* Loading */
+  #loading {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #444;
+    font-size: 11px;
+    font-family: Arial, sans-serif;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    z-index: 200;
+    transition: opacity 0.5s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+
+  .sources-list {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #1a1d22;
+    margin-bottom: 24px;
+  }
+  .sources-list h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #555;
+    font-family: Arial, sans-serif;
+    margin-bottom: 10px;
+  }
+  .source-item {
+    font-size: 10px;
+    font-family: Arial, sans-serif;
+    color: #888;
+    margin-bottom: 6px;
+    line-height: 1.4;
+    word-break: break-all;
+  }
+  .source-item a {
+    color: #7a9cbf;
+    text-decoration: none;
+  }
+  .source-item a:hover {
+    color: #a8c5e0;
+    text-decoration: underline;
+  }
+  .source-domain {
+    color: #aaa;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Calcul de la disposition…</div>
+
+<div id="header">
+  <h1>Les rives du silence</h1>
+  <div class="subtitle">Propriétés riveraines · Lac Léman · Genève</div>
+  <div class="stats" id="stats"></div>
+</div>
+
+<div id="filters">
+  <button class="filter-btn active" data-filter="all">Tout</button>
+  <button class="filter-btn" id="resetLayout" style="border-color:#553a3a; color:#aa6a6a;" title="Libère tous les nœuds et recentre">⟲ Recentrer</button>
+  <button class="filter-btn" data-filter="finance">Finance</button>
+  <button class="filter-btn" data-filter="extraction">Pétrole / Or</button>
+  <button class="filter-btn" data-filter="oligarchie">Oligarchie</button>
+  <button class="filter-btn" data-filter="royaute">Royautés</button>
+  <button class="filter-btn" data-filter="maritime">Maritime</button>
+  <button class="filter-btn" data-filter="industrie">Industrie</button>
+  <button class="filter-btn" data-filter="crime">Crime organisé</button>
+  <button class="filter-btn" data-filter="opaque">Opaque / écran</button>
+  <button class="filter-btn" data-filter="heritage">Héritage</button>
+</div>
+
+<div id="search">
+  <input type="text" id="searchInput" placeholder="Rechercher un propriétaire, une affaire…">
+</div>
+
+<svg id="canvas"></svg>
+
+<div id="legend">
+  <div class="legend-item">
+    <div class="legend-dot" style="border-color:#c8b89a; background:rgba(200,184,154,0.08); width:14px; height:14px;"></div>
+    Propriétaire / Parcelle
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="border-color:#7a9cbf; background:rgba(122,156,191,0.08)"></div>
+    Entité (société, fondation)
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="border-color:#bf7a7a; background:rgba(191,122,122,0.08)"></div>
+    Affaire documentée
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="border-color:#7abf9c; background:rgba(122,191,156,0.08)"></div>
+    Personne liée
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="border-color:#a87aff; background:rgba(168,122,255,0.08)"></div>
+    Institution commune
+  </div>
+</div>
+
+<div id="hint">
+  Cliquer un cercle = panneau · Glisser le fond = se déplacer<br>
+  Molette = zoomer · Recentrer = revenir à la vue d'ensemble
+</div>
+
+<div id="panel">
+  <button id="panel-close">✕</button>
+  <h2 id="panel-type">Propriétaire</h2>
+  <h3 id="panel-name"></h3>
+  <div class="info-block" id="panel-info"></div>
+  <div class="parcelles-list" id="panel-parcelles" style="display:none;">
+    <h4>Parcelles riveraines</h4>
+    <div id="panel-parcelles-list"></div>
+  </div>
+  <div class="sources-list" id="panel-sources" style="display:none;">
+    <h4>Sources</h4>
+    <div id="panel-sources-list"></div>
+  </div>
+  <div class="relations">
+    <h4>Relations documentées</h4>
+    <div id="panel-relations"></div>
+  </div>
+</div>
+
+<script>
+const DATA = {"nodes": [{"id": "owner_0", "label": "2:4534\n+ 2 autres", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "3 parcelles riveraines à Anières, totalisant 8'840 m². Co-fondateur d'Index Ventures (capital-risque, Genève, 1996) et de Medicxi Ventures (sciences de la vie, 2016). Ancien consultant chez McKinsey. Classé dans les 300 plus grandes fortunes de Suisse. Société pharmaceutique satellite (Aegerion) condamnée pour fraude aux assurances santé américaines ; cité dans des structures offshore documentées par l'ICIJ.", "parcelles": [{"id": "AN-4534", "commune": "Anières", "parcelle": "4534", "surface": 3569, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "AN-5049", "commune": "Anières", "parcelle": "5049", "surface": 1954, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "AN-5578", "commune": "Anières", "parcelle": "5578", "surface": 3317, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Anières 4534, Anières 5049, Anières 5578", "total_surface": 8840, "n_parcelles": 3, "sources_urls": ["https://www.medicxi.com/team/giuseppe-zocco", "https://www.indexventures.com/team/giuseppe-zocco/", "https://www.bilan.ch/story/famille-rimer-giuseppe-zocco-300-plus-riches-973125070866", "https://www.weforum.org/people/giuseppe-zocco/", "https://www.icij.org/investigations/panama-papers/20160403-putin-russia-offshore-network/", "https://www.occrp.org/en/project/the-panama-papers/russia-banking-on-influence"]}, {"id": "owner_0_e0", "label": "Index Ventures\n(capital-risque)", "type": "entite", "category": "finance", "info": "Co-fondé en 1996 avec David et Neil Rimer. Sièges Genève/Londres/SF/NY.", "owner_id": "owner_0"}, {"id": "owner_0_e1", "label": "Medicxi Ventures\n(pharma)", "type": "entite", "category": "finance", "info": "Co-fondateur 2016. Spin-off d'Index Ventures pour les sciences de la vie.", "owner_id": "owner_0"}, {"id": "owner_0_e3", "label": "Affaire Slaoui /\nMedicxi", "type": "affaire", "category": "finance", "info": "Moncef Slaoui (président scientifique GSK et Medicxi) écarté en 2021 pour harcèlement sexuel.", "owner_id": "owner_0"}, {"id": "owner_0_e5", "label": "Rada […]\nFoundation", "type": "entite", "category": "finance", "info": "Fondation philanthropique de l'épouse Stéphanie Rada […].", "owner_id": "owner_0"}, {"id": "owner_0_e6", "label": "Centessa\nPharmaceuticals", "type": "entite", "category": "finance", "info": "Pharma cotée à Boston, lancée depuis Genève.", "owner_id": "owner_0"}, {"id": "owner_0_e7", "label": "Aegerion / fraude\nassurances santé US", "type": "affaire", "category": "finance", "info": "Ex-représentant Aegerion (entreprise pharma liée à l'écosystème) condamné à 4,5 ans pour fraude.", "owner_id": "owner_0"}, {"id": "owner_0_e8", "label": "Panama Papers\n(réseau Poutine)", "type": "affaire", "category": "finance", "info": "Cité par OCCRP/ICIJ dans le réseau bancaire offshore russe.", "owner_id": "owner_0"}, {"id": "owner_1", "label": "2:5134", "type": "proprietaire", "category": "extraction", "sector": "or-extraction", "description": "Parcelle riveraine de 1'556 m² à Anières. Directeur de MKS PAMP Group, raffinerie d'or genevoise (Castel San Pietro/Mendrisio). Le groupe est associé à plusieurs enquêtes journalistiques sur l'origine de l'or raffiné — or de Tanzanie, du Liberia, et de l'Azerbaïdjan — où six journalistes ont été arrêtés en 2024 pour avoir documenté les exportations.", "parcelles": [{"id": "AN-5134", "commune": "Anières", "parcelle": "5134", "surface": 1556, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Anières 5134", "total_surface": 1556, "n_parcelles": 1, "sources_urls": ["https://www.mkspamp.com/about-us/team", "https://gothamcity.ch/2022/12/14/lor-sanglant-de-tanzanie-embarrasse-le-marche-britannique/", "https://www.swissinfo.ch/eng/business/swiss-ngo-unmasks-african-industrial-gold-trade/48402366"]}, {"id": "owner_1_e0", "label": "MKS PAMP Group\n(raffinage d'or)", "type": "entite", "category": "extraction", "info": "Groupe genevois de raffinage de métaux précieux. Lingots certifiés LBMA.", "owner_id": "owner_1"}, {"id": "owner_1_e1", "label": "Or 'sanglant' de\nTanzanie\n(Gotham 2022)", "type": "affaire", "category": "extraction", "info": "Enquête Gotham City sur or industriel tanzanien controversé.", "owner_id": "owner_1"}, {"id": "owner_1_e2", "label": "Or Liberia\n(Watson, pollution)", "type": "affaire", "category": "extraction", "info": "Enquête sur les milliards d'or, la pollution liée.", "owner_id": "owner_1"}, {"id": "owner_1_e3", "label": "Or Azerbaïdjan —\n6 journalistes\narrêtés (2024)", "type": "affaire", "category": "extraction", "info": "RTS 2024 : journalistes arrêtés pour avoir enquêté sur or azerbaïdjanais exporté en Suisse.", "owner_id": "owner_1"}, {"id": "owner_1_e4", "label": "LBMA — London\nBullion Market\nAssociation", "type": "entite", "category": "extraction", "info": "Certification des lingots.", "owner_id": "owner_1"}, {"id": "owner_1_e5", "label": "Gotham City", "type": "source", "category": "extraction", "info": "Site d'investigation suisse.", "owner_id": "owner_1"}, {"id": "owner_1_e6", "label": "RTS Info / SwissInfo", "type": "source", "category": "extraction", "info": "Médias publics.", "owner_id": "owner_1"}, {"id": "owner_2", "label": "2:5701", "type": "proprietaire", "category": "oligarchie", "sector": "oligarchie", "description": "Parcelle riveraine de 5'544 m² à Anières. Sœur, selon le registre foncier, de l'oligarque ukrainien Igor Kolomoïsky. Le Tribunal fédéral suisse a rejeté en 2023 une plainte de la famille en se fondant sur les enquêtes de l'OCCRP. Le frère est documenté dans l'accaparement de terres dans les Carpates et la disparition de fonds caritatifs ukrainiens.", "parcelles": [{"id": "AN-5701", "commune": "Anières", "parcelle": "5701", "surface": 5544, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Anières 5701", "total_surface": 5544, "n_parcelles": 1, "sources_urls": ["https://www.occrp.org/en/news/swiss-court-dismisses-lawsuit-of-oligarchs-sister-citing-occrps-investigation", "https://gothamcity.ch/2023/02/01/la-soeur-digor-kolomoisky-gagne-une-manche-au-tribunal-federal/"]}, {"id": "owner_2_e0", "label": "Igor […]\n(frère, oligarque)", "type": "personne", "category": "oligarchie", "info": "Oligarque ukrainien, ex-gouverneur Dnipropetrovsk, sous procédures judiciaires.", "owner_id": "owner_2"}, {"id": "owner_2_e1", "label": "OCCRP — enquête\n[…]", "type": "affaire", "category": "oligarchie", "info": "Organized Crime and Corruption Reporting Project.", "owner_id": "owner_2"}, {"id": "owner_2_e2", "label": "Tribunal fédéral CH\n(plainte rejetée 2023)", "type": "affaire", "category": "oligarchie", "info": "TF rejette sa plainte, cite l'enquête OCCRP.", "owner_id": "owner_2"}, {"id": "owner_2_e3", "label": "Carpathian land grab\n(BMF report)", "type": "affaire", "category": "oligarchie", "info": "Accaparement terres Carpates ukrainiennes.", "owner_id": "owner_2"}, {"id": "owner_2_e4", "label": "Estonia Ukraine charity\n(Kyiv Independent)", "type": "affaire", "category": "oligarchie", "info": "Suspicion détournement fonds caritatifs.", "owner_id": "owner_2"}, {"id": "owner_2_e5", "label": "Gotham City", "type": "source", "category": "oligarchie", "info": "Site investigation suisse.", "owner_id": "owner_2"}, {"id": "owner_3", "label": "2:5968", "type": "proprietaire", "category": "autre", "sector": "media", "description": "Parcelle riveraine de 3'120 m² à Anières. Présentateur de télévision allemand (TV total, Schlag den Raab, ProSieben), retiré depuis 2015. Fondateur de la société de production Brainpool TV. Quelques polémiques médiatiques documentées au cours de sa carrière.", "parcelles": [{"id": "AN-5968", "commune": "Anières", "parcelle": "5968", "surface": 3120, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Anières 5968", "total_surface": 3120, "n_parcelles": 1, "sources_urls": ["https://fr.wikipedia.org/wiki/Stefan_Raab"]}, {"id": "owner_3_e0", "label": "TV total / ProSieben\n(Allemagne)", "type": "entite", "category": "autre", "info": "Animateur emblématique des années 2000-2010 en Allemagne.", "owner_id": "owner_3"}, {"id": "owner_3_e1", "label": "Brainpool TV", "type": "entite", "category": "autre", "info": "Société de production possédée par Raab.", "owner_id": "owner_3"}, {"id": "owner_3_e2", "label": "Polémiques\npubliques (Wikipédia)", "type": "affaire", "category": "autre", "info": "Plusieurs polémiques médiatiques documentées.", "owner_id": "owner_3"}, {"id": "owner_4", "label": "2:6407", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 3'051 m² à Anières. CEO de l'Union Bancaire Privée (UBP), banque privée genevoise, depuis 1998. Fils du fondateur (décédé en 2016). L'UBP a perdu environ 700 millions USD pour ses clients dans l'affaire Madoff en 2008. Une branche de la famille est citée dans des allégations sur le commerce du pétrole de Daech.", "parcelles": [{"id": "AN-6407", "commune": "Anières", "parcelle": "6407", "surface": 3051, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Anières 6407", "total_surface": 3051, "n_parcelles": 1, "sources_urls": ["https://www.ubp.com/fr/contacts/ubp-people/guy-de-picciotto", "https://www.lemonde.fr/economie/article/2009/01/17/a-geneve-l-ubp-voit-sa-reputation-ternie_1143143_3234.html", "https://www.rts.ch/info/economie/7570743-edgar-de-picciotto-fondateur-de-lunion-bancaire-privee-est-decede.html"]}, {"id": "owner_4_e0", "label": "Union Bancaire\nPrivée (UBP)", "type": "entite", "category": "finance", "info": "Banque privée genevoise. CEO depuis 1998.", "owner_id": "owner_4"}, {"id": "owner_4_e1", "label": "[…] de […]\n(père, fondateur)", "type": "personne", "category": "finance", "info": "Fondateur d'UBP, décédé en 2016.", "owner_id": "owner_4"}, {"id": "owner_4_e2", "label": "Affaire Madoff\n(2008)", "type": "affaire", "category": "finance", "info": "UBP perd ~700 M$ dans la fraude Madoff, réputation ternie.", "owner_id": "owner_4"}, {"id": "owner_4_e3", "label": "Sébastien […] /\npétrole Daesh", "type": "affaire", "category": "finance", "info": "Branche familiale liée à des allégations sur le pétrole de Daesh (Le Média).", "owner_id": "owner_4"}, {"id": "owner_5", "label": "6:2605", "type": "proprietaire", "category": "heritage", "sector": "noblesse-discret", "description": "Parcelle riveraine de 1'165 m² à Bellevue. Famille de la noblesse française documentée dans les armoriaux. Profil discret, sources limitées.", "parcelles": [{"id": "BV-2605", "commune": "Bellevue", "parcelle": "2605", "surface": 1165, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Bellevue 2605", "total_surface": 1165, "n_parcelles": 1, "sources_urls": ["https://notrehistoire.ch/entries/xN7BGr5xY6d", "https://armorialdefrance.fr/"]}, {"id": "owner_5_e0", "label": "Famille de […]\n(noblesse française)", "type": "entite", "category": "heritage", "info": "Famille aristocratique française documentée dans les armoriaux.", "owner_id": "owner_5"}, {"id": "owner_5_e1", "label": "Notre Histoire CH", "type": "source", "category": "heritage", "info": "Plateforme d'histoire suisse.", "owner_id": "owner_5"}, {"id": "owner_6", "label": "6:3057", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 4'066 m² à Bellevue. Plus ancienne banque privée genevoise (fondée 1796). Inculpée pour blanchiment d'argent aggravé en 2024 par le Ministère Public de la Confédération. Citée dans les Offshore Leaks de l'ICIJ et dans l'enquête sur les fonds d'un ancien président panaméen (Gotham City, 2023).", "parcelles": [{"id": "BV-3057", "commune": "Bellevue", "parcelle": "3057", "surface": 4066, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Bellevue 3057", "total_surface": 4066, "n_parcelles": 1, "sources_urls": ["https://www.rts.ch/info/economie/2024/article/la-banque-privee-lombard-odier-inculpee-de-blanchiment-d-argent-aggrave-28711170.html", "https://www.admin.ch/gov/fr/accueil/documentation/communiques.msg-id-103351.html", "https://offshoreleaks.icij.org/nodes/12152335"]}, {"id": "owner_6_e0", "label": "Banque Lombard\nOdier & Cie", "type": "entite", "category": "finance", "info": "Plus ancienne banque privée genevoise, fondée 1796.", "owner_id": "owner_6"}, {"id": "owner_6_e1", "label": "Inculpation MPC\nblanchiment 2024", "type": "affaire", "category": "finance", "info": "Inculpée pour blanchiment d'argent aggravé. Procédure en cours.", "owner_id": "owner_6"}, {"id": "owner_6_e3", "label": "Affaire ex-président\ndu Panama", "type": "affaire", "category": "finance", "info": "Fonds liés à l'ex-président panaméen sous enquête en Suisse (Gotham 2023).", "owner_id": "owner_6"}, {"id": "owner_7", "label": "6:3619", "type": "proprietaire", "category": "royaute", "sector": "monarchie-Golfe", "description": "Parcelle riveraine de 493 m² à Bellevue. Membre d'une famille royale du Golfe (Qatar). CEO de l'Investment Promotion Agency Qatar et lié à Media City Qatar. Un cousin est cité dans les Offshore Leaks de l'ICIJ. Famille concernée par le boycott régional de 2017 (plainte du Qatar à l'OMC).", "parcelles": [{"id": "BV-3619", "commune": "Bellevue", "parcelle": "3619", "surface": 493, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Bellevue 3619", "total_surface": 493, "n_parcelles": 1, "sources_urls": ["https://thebusinessyear.com/interview/sheikh-ali-alwaleed-al-thani-ceo-investment-promotion-agency-qatar-ipa-qatar/", "https://offshoreleaks.icij.org/stories/hamad-bin-jassim-bin-jaber-al-thani", "https://www.aljazeera.com/news/2017/8/1/qatar-files-wto-complaint-against-trade-boycott"]}, {"id": "owner_7_e0", "label": "Famille Al Thani\n(Qatar)", "type": "entite", "category": "royaute", "info": "Famille royale du Qatar, l'une des plus riches du monde.", "owner_id": "owner_7"}, {"id": "owner_7_e1", "label": "IPA Qatar\n(Investment Agency)", "type": "entite", "category": "royaute", "info": "Agence de promotion des investissements du Qatar.", "owner_id": "owner_7"}, {"id": "owner_7_e2", "label": "Media City Qatar", "type": "entite", "category": "royaute", "info": "Hub médiatique qatari.", "owner_id": "owner_7"}, {"id": "owner_7_e3", "label": "Offshore Leaks\n— Hamad bin Jassim", "type": "affaire", "category": "royaute", "info": "Cousin Hamad bin Jassim cité dans Offshore Leaks (ICIJ).", "owner_id": "owner_7"}, {"id": "owner_7_e4", "label": "Allégations\nfinancement\n(Jforum)", "type": "affaire", "category": "royaute", "info": "Allégations relayées par certains médias (à prendre avec précaution sourcière).", "owner_id": "owner_7"}, {"id": "owner_7_e5", "label": "Boycott / WTO\ndispute (2017)", "type": "affaire", "category": "royaute", "info": "Plainte du Qatar à l'OMC suite au boycott des pays voisins.", "owner_id": "owner_7"}, {"id": "owner_8", "label": "6:3620", "type": "proprietaire", "category": "industrie", "sector": "industrie-historique", "description": "Parcelle riveraine de 710 m² à Bellevue. Membre présumé de la famille fondatrice du groupe BIC (stylos, briquets), groupe industriel français fondé en 1945. Patrimoine familial estimé à plus de 2 milliards USD.", "parcelles": [{"id": "BV-3620", "commune": "Bellevue", "parcelle": "3620", "surface": 710, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Bellevue 3620", "total_surface": 710, "n_parcelles": 1, "sources_urls": ["https://fr.wikipedia.org/wiki/Marcel_Bich"]}, {"id": "owner_8_e0", "label": "BIC International\n(stylos, briquets)", "type": "entite", "category": "industrie", "info": "Groupe industriel français, fondé par Marcel […] 1945.", "owner_id": "owner_8"}, {"id": "owner_8_e1", "label": "Famille […] (BIC)", "type": "entite", "category": "industrie", "info": "Famille fondatrice de BIC. Patrimoine 2+ Mds USD.", "owner_id": "owner_8"}, {"id": "owner_9", "label": "6:3966", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 1'996 m² à Bellevue. Société écran luxembourgeoise (NorthData B70382). Structure typique d'opacité fiscale, sans bénéficiaire visible.", "parcelles": [{"id": "BV-3966", "commune": "Bellevue", "parcelle": "3966", "surface": 1996, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Bellevue 3966", "total_surface": 1996, "n_parcelles": 1, "sources_urls": ["https://www.northdata.com/Celerity+SA,+Luxembourg/B70382"]}, {"id": "owner_9_e0", "label": "Celerity SA\n(Luxembourg)", "type": "entite", "category": "opaque", "info": "Société immobilière luxembourgeoise, structure opaque.", "owner_id": "owner_9"}, {"id": "owner_9_e1", "label": "NorthData\n(registre)", "type": "source", "category": "opaque", "info": "Base de données européenne des entreprises.", "owner_id": "owner_9"}, {"id": "owner_10", "label": "16:5784", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 1'424 m² à Collonge-Bellerive. Ancien président de la Chambre de commerce et d'industrie de Genève (CCIG). Associé d'une banque privée genevoise (fondée 1844). Cité dans les Offshore Leaks de l'ICIJ. La banque est impliquée dans l'affaire NBT (68 M CHF de flux suspects à Genève) et dans une affaire de détournement au Brésil.", "parcelles": [{"id": "CB-5784", "commune": "Collonge-Bellerive", "parcelle": "5784", "surface": 1424, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 5784", "total_surface": 1424, "n_parcelles": 1, "sources_urls": ["https://www.ccig.ch/blog/2013/05/pierre-poncet-nouveau-president-de-la-ccig", "https://offshoreleaks.icij.org/nodes/12213286", "https://agefi.com/actualites/entreprises/la-banque-bordier-cie-citee-dans-une-affaire-de-detournement-au-bresil"]}, {"id": "owner_10_e0", "label": "CCIG (Genève)", "type": "entite", "category": "finance", "info": "Ancien président de la Chambre de commerce.", "owner_id": "owner_10"}, {"id": "owner_10_e1", "label": "[…] & Cie\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise, fondée 1844.", "owner_id": "owner_10"}, {"id": "owner_10_e3", "label": "Affaire détournement\nBrésil ([…])", "type": "affaire", "category": "finance", "info": "[…] citée dans une affaire de détournement au Brésil.", "owner_id": "owner_10"}, {"id": "owner_10_e4", "label": "Banque russe NBT\n— 68 M CHF Genève", "type": "affaire", "category": "finance", "info": "Faillite NBT : flux de 68 M CHF passés par Genève suspectés de blanchiment.", "owner_id": "owner_10"}, {"id": "owner_11", "label": "16:5810", "type": "proprietaire", "category": "opaque", "sector": "opaque", "description": "Parcelle riveraine de 3'471 m² à Collonge-Bellerive. Personnalité internationale citée dans les Offshore Leaks et les Panama Papers. Public Eye a documenté ce cas comme illustration des lacunes du dispositif suisse anti-blanchiment.", "parcelles": [{"id": "CB-5810", "commune": "Collonge-Bellerive", "parcelle": "5810", "surface": 3471, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 5810", "total_surface": 3471, "n_parcelles": 1, "sources_urls": ["https://offshoreleaks.icij.org/nodes/11014026", "https://www.publiceye.ch/fr/coin-medias/communiques-de-presse/detail/les-panama-papers-revelent-les-lacunes-du-dispositif-suisse-anti-blanchiment", "https://www.swissinfo.ch/fre/economie/panama-papers_les-avocats-suisses-sous-le-feu-des-critiques/42076214"]}, {"id": "owner_11_e1", "label": "Public Eye —\nlacunes anti-\nblanchiment", "type": "affaire", "category": "opaque", "info": "ONG suisse documentant les failles du dispositif anti-blanchiment.", "owner_id": "owner_11"}, {"id": "owner_11_e2", "label": "Avocats suisses\nsous critique\n(Panama Papers)", "type": "affaire", "category": "opaque", "info": "Avocats suisses critiqués pour leur rôle dans les Panama Papers.", "owner_id": "owner_11"}, {"id": "owner_12", "label": "16:5998\n+ 1 autre", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "2 parcelles riveraines à Collonge-Bellerive, totalisant 10'925 m². Associé senior d'une banque privée genevoise (fondée 1805). La banque a été condamnée par le DOJ américain à 122,9 M$ en décembre 2023 pour avoir aidé à dissimuler 5,6 Mds$ d'avoirs ; une procédure du Ministère Public de la Confédération est ouverte depuis 2021 (blanchiment aggravé), une autre l'a condamnée en 2024 pour violation de l'obligation de communiquer. Perquisitions liées à l'affaire Petrobras.", "parcelles": [{"id": "CB-5998", "commune": "Collonge-Bellerive", "parcelle": "5998", "surface": 3322, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "CB-8582", "commune": "Collonge-Bellerive", "parcelle": "8582", "surface": 7603, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 5998, Collonge-Bellerive 8582", "total_surface": 10925, "n_parcelles": 2, "sources_urls": ["https://www.justice.gov/opa/pr/swiss-private-bank-banque-pictet-admits-conspiring-us-taxpayers-hide-assets-and-income", "https://www.tdg.ch/derniere-banque-dans-le-collimateur-americain-evasion-fiscale-pictet-verse-123-millions-a-washington-294158503152", "https://gothamcity.ch/2021/12/08/pictet-cie-sous-enquete-pour-blanchiment-dargent-aggrave/"]}, {"id": "owner_12_e0", "label": "Banque […] & Cie\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise, fondée 1805.", "owner_id": "owner_12"}, {"id": "owner_12_e1", "label": "DOJ accord\n122,9 M$ (déc. 2023)", "type": "affaire", "category": "finance", "info": "Accord de poursuite différée avec le DOJ américain. La banque admet avoir conspiré pour dissimuler 5,6 Mds$.", "owner_id": "owner_12"}, {"id": "owner_12_e2", "label": "Procédure MPC\nblanchiment aggravé", "type": "affaire", "category": "finance", "info": "Ministère Public de la Confédération, ouverte 2021.", "owner_id": "owner_12"}, {"id": "owner_12_e3", "label": "Affaire Petrobras\n(perquisition)", "type": "affaire", "category": "finance", "info": "Perquisition de […] dans le cadre de l'affaire Petrobras.", "owner_id": "owner_12"}, {"id": "owner_12_e4", "label": "[…] condamnée —\nviolation obligation\nde communiquer", "type": "affaire", "category": "finance", "info": "Mars 2024 : […] condamnée pour violation de l'obligation de communiquer (LBA).", "owner_id": "owner_12"}, {"id": "owner_13", "label": "16:6025\n+ 2 autres", "type": "proprietaire", "category": "industrie", "sector": "industrie-luxe", "description": "3 parcelles riveraines à Collonge-Bellerive, totalisant 8'111 m². Président d'une manufacture horlogère genevoise (haute horlogerie, dans la famille depuis 1932). Yacht Nautilus. Plusieurs témoignages publics d'employés sur les conditions de travail (Le Temps, 20 minutes).", "parcelles": [{"id": "CB-6025", "commune": "Collonge-Bellerive", "parcelle": "6025", "surface": 2205, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "CB-9539", "commune": "Collonge-Bellerive", "parcelle": "9539", "surface": 4385, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "CB-9630", "commune": "Collonge-Bellerive", "parcelle": "9630", "surface": 1521, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=9630"}], "parcelles_str": "Collonge-Bellerive 6025, Collonge-Bellerive 9539, Collonge-Bellerive 9630", "total_surface": 8111, "n_parcelles": 3, "sources_urls": ["https://www.fhs.swiss/fre/2009-10-26_730.html", "https://www.superyachtfan.com/fr/yacht/nautilus/owner/", "https://www.letemps.ch/economie/horlogerie-joaillerie/nouveaux-temoignages-accablants-patek-philippe"]}, {"id": "owner_13_e0", "label": "Patek Philippe\n(horlogerie luxe)", "type": "entite", "category": "industrie", "info": "Président. Manufacture genevoise emblématique.", "owner_id": "owner_13"}, {"id": "owner_13_e1", "label": "Famille […]", "type": "entite", "category": "industrie", "info": "Famille propriétaire de Patek Philippe depuis 1932.", "owner_id": "owner_13"}, {"id": "owner_13_e2", "label": "Yacht Nautilus\n(superyacht)", "type": "entite", "category": "industrie", "info": "Superyacht possédé par la famille.", "owner_id": "owner_13"}, {"id": "owner_13_e3", "label": "Témoignages\nemployés Patek\n(LeTemps, 20min)", "type": "affaire", "category": "industrie", "info": "Plusieurs témoignages publics sur les conditions de travail.", "owner_id": "owner_13"}, {"id": "owner_14", "label": "16:7389", "type": "proprietaire", "category": "maritime", "sector": "maritime", "description": "Parcelle riveraine de 20'830 m² à Collonge-Bellerive. Société immobilière liée à la famille fondatrice de la plus grande compagnie mondiale de transport maritime par conteneurs (siège à Genève). Le fondateur a été mis en examen pour corruption en Ligurie/Naples. La compagnie est documentée comme cible d'infiltration par des trafiquants des Balkans dans ses conteneurs.", "parcelles": [{"id": "CB-7389", "commune": "Collonge-Bellerive", "parcelle": "7389", "surface": 20830, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 7389", "total_surface": 20830, "n_parcelles": 1, "sources_urls": ["https://www.swissinfo.ch/fre/economie/msc-une-famille-de-discrets-armateurs-genevois-%c3%a0-l-empire-mondial/49013162", "https://tiger.ch/hr/ge/societe-immobiliere-douce-rive-sa/geneve/che100770877"]}, {"id": "owner_14_e0", "label": "MSC — Mediterranean\nShipping Company", "type": "entite", "category": "maritime", "info": "Plus grande compagnie de transport maritime au monde. Siège Genève.", "owner_id": "owner_14"}, {"id": "owner_14_e1", "label": "[…]\n(fondateur MSC)", "type": "personne", "category": "maritime", "info": "Fondateur. Famille la plus riche de Suisse (Bilan).", "owner_id": "owner_14"}, {"id": "owner_14_e2", "label": "Affaire corruption\nLigurie / Gênes", "type": "affaire", "category": "maritime", "info": "[…] mis en examen pour corruption (Naples).", "owner_id": "owner_14"}, {"id": "owner_14_e3", "label": "Trafic drogue\nréseaux balkaniques\n(infiltration)", "type": "affaire", "category": "maritime", "info": "Investigations sur l'infiltration de trafiquants dans les conteneurs MSC.", "owner_id": "owner_14"}, {"id": "owner_14_e4", "label": "Empire MSC mondial\n(SwissInfo)", "type": "source", "category": "maritime", "info": "Documentation de l'empire familial […].", "owner_id": "owner_14"}, {"id": "owner_15", "label": "16:7867", "type": "proprietaire", "category": "opaque", "sector": "opaque", "description": "Parcelle riveraine de 3'007 m² à Collonge-Bellerive. Lié à une société du registre du commerce genevois (P-Lançon SA). Profil très discret.", "parcelles": [{"id": "CB-7867", "commune": "Collonge-Bellerive", "parcelle": "7867", "surface": 3007, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 7867", "total_surface": 3007, "n_parcelles": 1, "sources_urls": ["https://www.lixt.ch/fr/registre-du-commerce/p-lancon-sa-104325"]}, {"id": "owner_15_e0", "label": "P-Lançon SA", "type": "entite", "category": "opaque", "info": "Société du registre genevois.", "owner_id": "owner_15"}, {"id": "owner_16", "label": "16:8288", "type": "proprietaire", "category": "industrie", "sector": "pharma", "description": "Parcelle riveraine de 4'164 m² à Collonge-Bellerive. Lié à TRB Chemedica International SA et à une fondation pour l'étude du système nerveux. Profil pharmaceutique international.", "parcelles": [{"id": "CB-8288", "commune": "Collonge-Bellerive", "parcelle": "8288", "surface": 4164, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 8288", "total_surface": 4164, "n_parcelles": 1, "sources_urls": ["https://www.cybo.com/CH-contact/trb-chemedica-international-sa_3i/Guido%2BDi%2BNapoli"]}, {"id": "owner_16_e0", "label": "TRB Chemedica\nInternational SA", "type": "entite", "category": "industrie", "info": "Société pharmaceutique.", "owner_id": "owner_16"}, {"id": "owner_16_e1", "label": "Fondation étude du\nsystème nerveux", "type": "entite", "category": "industrie", "info": "Fondation liée.", "owner_id": "owner_16"}, {"id": "owner_17", "label": "16:8585", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 2'835 m² à Collonge-Bellerive. Société écran genevoise sans bénéficiaire visible. Transparency France a documenté l'usage de telles structures pour masquer les bénéficiaires effectifs dans l'immobilier.", "parcelles": [{"id": "CB-8585", "commune": "Collonge-Bellerive", "parcelle": "8585", "surface": 2835, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 8585", "total_surface": 2835, "n_parcelles": 1, "sources_urls": ["https://www.lixt.ch/handelsregister/societe-immobiliere-rive-ensoleillee-sa-174337", "https://transparency-france.org/2023/07/06/blanchiment-a-qui-appartient-limmobilier-en-france-resultats-de-notre-analyse-croisee-des-donnees-sur-les-societes-et-sur-la-propriete-immobiliere-en-france/"]}, {"id": "owner_17_e0", "label": "Société Immobilière\nRive Ensoleillée SA", "type": "entite", "category": "opaque", "info": "Société immobilière sans bénéficiaire visible.", "owner_id": "owner_17"}, {"id": "owner_17_e1", "label": "Transparency France\n— blanchiment\nimmobilier", "type": "source", "category": "opaque", "info": "Étude sur l'opacité immobilière en France.", "owner_id": "owner_17"}, {"id": "owner_18", "label": "16:9164", "type": "proprietaire", "category": "oligarchie", "sector": "oligarchie", "description": "Parcelle riveraine de 28'700 m² à Collonge-Bellerive. Fille d'un ancien président d'un État d'Asie centrale (1991–2019). Fortune estimée à environ 2,9 Mds$ par Forbes. Mariée à un dirigeant d'une compagnie pétrolière nationale. Famille citée dans les Pandora Papers (ICIJ, 2021). Le parquet genevois examine 126 M$ d'acquisitions sous soupçons de blanchiment. Public Eye a documenté plusieurs affaires liées à cet État en Suisse.", "parcelles": [{"id": "CB-9164", "commune": "Collonge-Bellerive", "parcelle": "9164", "surface": 28700, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 9164", "total_surface": 28700, "n_parcelles": 1, "sources_urls": ["https://www.forbes.com/profile/dinara-kulibaeva/", "https://www.publiceye.ch/fr/thematiques/negoce-de-matieres-premieres/les-affaires-souterraines-du-president-kazakh/suisse-kazakhstan", "https://css.ethz.ch/en/services/digital-library/articles/article.html/98222"]}, {"id": "owner_18_e0", "label": "Noursoultan\n[…] (père)", "type": "personne", "category": "oligarchie", "info": "Président du Kazakhstan 1991–2019.", "owner_id": "owner_18"}, {"id": "owner_18_e1", "label": "[…]\n(mari)", "type": "personne", "category": "oligarchie", "info": "Directeur KazMunaiGaz.", "owner_id": "owner_18"}, {"id": "owner_18_e2", "label": "KazMunaiGaz\n(pétrole kazakh)", "type": "entite", "category": "oligarchie", "info": "Compagnie pétrolière nationale du Kazakhstan.", "owner_id": "owner_18"}, {"id": "owner_18_e3", "label": "Pandora Papers\nstructures offshore", "type": "affaire", "category": "oligarchie", "info": "Famille citée dans Pandora Papers (ICIJ 2021).", "owner_id": "owner_18"}, {"id": "owner_18_e4", "label": "Enquête parquet\ngenevois 126 M$", "type": "affaire", "category": "oligarchie", "info": "Parquet genevois examine 126 M$ d'acquisition. Soupçons de blanchiment.", "owner_id": "owner_18"}, {"id": "owner_18_e5", "label": "Public Eye —\naffaires kazakhes\nen Suisse", "type": "source", "category": "oligarchie", "info": "Public Eye a documenté les liens Kazakhstan-Suisse.", "owner_id": "owner_18"}, {"id": "owner_18_e6", "label": "Forbes profile", "type": "source", "category": "oligarchie", "info": "Profil Forbes.", "owner_id": "owner_18"}, {"id": "owner_19", "label": "16:9165", "type": "proprietaire", "category": "heritage", "sector": "heritage-international", "description": "Parcelle riveraine de 3'991 m² à Collonge-Bellerive. Membre d'une vieille dynastie banquière levantine, originaire de Beyrouth. Liens documentés avec le réseau de développement d'une communauté religieuse. La famille est associée à la vente controversée de terres en Palestine dans les années 1920.", "parcelles": [{"id": "CB-9165", "commune": "Collonge-Bellerive", "parcelle": "9165", "surface": 3991, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 9165", "total_surface": 3991, "n_parcelles": 1, "sources_urls": ["https://en.wikipedia.org/wiki/Sursock_family", "https://en.wikipedia.org/wiki/Sursock_Purchases", "https://find-and-update.company-information.service.gov.uk/officers/0OSkex55zMe8HDYFWHBwdHu9Z-k/appointments"]}, {"id": "owner_19_e0", "label": "Famille […]\n(Beyrouth)", "type": "entite", "category": "heritage", "info": "Vieille dynastie banquière levantine, Beyrouth.", "owner_id": "owner_19"}, {"id": "owner_19_e1", "label": "[…]\n(Palestine, 1920s)", "type": "affaire", "category": "heritage", "info": "Vente controversée de terres palestiniennes par les […] dans les années 1920.", "owner_id": "owner_19"}, {"id": "owner_19_e2", "label": "Aga Khan\nDevelopment Network", "type": "entite", "category": "heritage", "info": "Liens documentés avec l'AKDN.", "owner_id": "owner_19"}, {"id": "owner_19_e3", "label": "UK Companies\n(officer registry)", "type": "source", "category": "heritage", "info": "Mandats au registre britannique.", "owner_id": "owner_19"}, {"id": "owner_20", "label": "16:9416", "type": "proprietaire", "category": "oligarchie", "sector": "oligarchie", "description": "Parcelle riveraine de 11'003 m² à Collonge-Bellerive. Millionnaire russo-suisse, frère du co-fondateur de Lukoil (ex-sénateur russe, sous sanctions internationales). Procédure pour emploi de sans-papiers dans une villa genevoise (2020). Infractions économiques poursuivies en Roumanie et Moldavie. Classé dans les 300 plus grandes fortunes de Suisse.", "parcelles": [{"id": "CB-9416", "commune": "Collonge-Bellerive", "parcelle": "9416", "surface": 11003, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 9416", "total_surface": 11003, "n_parcelles": 1, "sources_urls": ["https://interactif.bilan.ch/300-plus-riches/rishat-safin.html", "https://gothamcity.ch/2020/08/26/le-millionnaire-russe-employait-des-sans-papiers-pour-nettoyer-sa-villa-de-geneve/"]}, {"id": "owner_20_e0", "label": "[…] (frère)\n— co-fondateur Lukoil", "type": "personne", "category": "oligarchie", "info": "Co-fondateur Lukoil, ancien sénateur russe.", "owner_id": "owner_20"}, {"id": "owner_20_e1", "label": "Lukoil (pétrole russe)", "type": "entite", "category": "oligarchie", "info": "Géant pétrolier russe, sous sanctions internationales.", "owner_id": "owner_20"}, {"id": "owner_20_e2", "label": "Sans-papiers\nvilla Genève (2020)", "type": "affaire", "category": "oligarchie", "info": "Gotham/RTS : travailleurs sans-papiers employés. Procédure judiciaire.", "owner_id": "owner_20"}, {"id": "owner_20_e3", "label": "Infractions Roumanie\net Moldavie", "type": "affaire", "category": "oligarchie", "info": "Poursuites pour infractions économiques.", "owner_id": "owner_20"}, {"id": "owner_21", "label": "16:9524", "type": "proprietaire", "category": "crime", "sector": "crime-organise", "description": "Parcelle riveraine de 1'908 m² à Collonge-Bellerive. Lié au réseau du Petit Bar, organisation criminelle corse. Procès de Marseille (2025) : condamnations pour blanchiment à grande échelle. Connexion avec un marchand d'art genevois (affaire Bouvier / Rybolovlev / Sotheby's).", "parcelles": [{"id": "CB-9524", "commune": "Collonge-Bellerive", "parcelle": "9524", "surface": 1908, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 9524", "total_surface": 1908, "n_parcelles": 1, "sources_urls": ["https://www.lepoint.fr/societe/rififi-dans-le-petit-monde-de-l-art-genevois-12-03-2015-1912155_23.php", "https://abpa-avocats.com/de-la-corse-a-dubai-les-secrets-du-blanchiment-du-petit-bar-nouvelobs-com/"]}, {"id": "owner_21_e0", "label": "Réseau Petit Bar\n(Corse)", "type": "entite", "category": "crime", "info": "Organisation criminelle corse.", "owner_id": "owner_21"}, {"id": "owner_21_e1", "label": "Procès Marseille 2025\n— blanchiment", "type": "affaire", "category": "crime", "info": "Condamnations pour blanchiment à grande échelle.", "owner_id": "owner_21"}, {"id": "owner_21_e2", "label": "[…]\n(marchand d'art)", "type": "personne", "category": "crime", "info": "Marchand d'art genevois, affaire Rybolovlev-Sotheby's.", "owner_id": "owner_21"}, {"id": "owner_21_e3", "label": "Affaire art genevois\n(Le Point)", "type": "affaire", "category": "crime", "info": "Le Point : 'Rififi dans le petit monde de l'art genevois'.", "owner_id": "owner_21"}, {"id": "owner_22", "label": "16:10043", "type": "proprietaire", "category": "autre", "sector": "philanthropie", "description": "Parcelle riveraine de 2'070 m² à Collonge-Bellerive. Famille industrielle (textile, Suisse italienne). Engagée dans la philanthropie genevoise (Master en philanthropie de l'UniGE, soutien aux HUG, comité d'une fondation locale).", "parcelles": [{"id": "CB-10043", "commune": "Collonge-Bellerive", "parcelle": "10043", "surface": 2070, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Collonge-Bellerive 10043", "total_surface": 2070, "n_parcelles": 1, "sources_urls": ["https://www.unige.ch/philanthropie/application/files/6417/2889/5482/Master-Class-en-Philanthropie-2025.pdf"]}, {"id": "owner_22_e0", "label": "UniGE Master en\nphilanthropie", "type": "entite", "category": "autre", "info": "Liée au programme.", "owner_id": "owner_22"}, {"id": "owner_22_e1", "label": "HUG (Hôpitaux\nGenève)", "type": "entite", "category": "autre", "info": "Engagement philanthropique.", "owner_id": "owner_22"}, {"id": "owner_22_e2", "label": "Fondation Petit-Lac", "type": "entite", "category": "autre", "info": "Comité.", "owner_id": "owner_22"}, {"id": "owner_23", "label": "17:382", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 1'044 m² à Cologny. Société immobilière genevoise. Citée par Renverse.co dans une analyse critique de la propriété et de la spéculation immobilière à Genève.", "parcelles": [{"id": "CO-382", "commune": "Cologny", "parcelle": "382", "surface": 1044, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Cologny 382", "total_surface": 1044, "n_parcelles": 1, "sources_urls": ["https://fr.kompass.com/c/cruso-sa/ch754791/", "https://renverse.co/infos-locales/article/l-etat-et-la-police-defendent-la-speculation-et-la-propriete-privee-ripostons-3912"]}, {"id": "owner_23_e0", "label": "Cruso SA", "type": "entite", "category": "opaque", "info": "Société immobilière au registre genevois.", "owner_id": "owner_23"}, {"id": "owner_23_e1", "label": "Renverse.co —\ncritique propriété", "type": "source", "category": "opaque", "info": "Article critique sur la propriété privée à Genève.", "owner_id": "owner_23"}, {"id": "owner_24", "label": "17:384", "type": "proprietaire", "category": "autre", "sector": "immobilier", "description": "Parcelle riveraine de 1'167 m² à Cologny. Liée à Concrete Investments (immobilier). Profil discret.", "parcelles": [{"id": "CO-384", "commune": "Cologny", "parcelle": "384", "surface": 1167, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Cologny 384", "total_surface": 1167, "n_parcelles": 1, "sources_urls": ["https://www.concreteinvestments.com/marielle-bratschi"]}, {"id": "owner_24_e0", "label": "Concrete Investments", "type": "entite", "category": "autre", "info": "Société d'investissement immobilier.", "owner_id": "owner_24"}, {"id": "owner_25", "label": "17:871", "type": "proprietaire", "category": "finance", "sector": "finance-internationale", "description": "Parcelle riveraine de 1'324 m² à Cologny. Investisseur privé international, lié au Dan David Prize (Israël). Mandats au registre chypriote (HE/106278).", "parcelles": [{"id": "CO-871", "commune": "Cologny", "parcelle": "871", "surface": 1324, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Cologny 871", "total_surface": 1324, "n_parcelles": 1, "sources_urls": ["https://dandavidprize.org/directory/mr-francis-wahl/", "https://cyprusregistry.com/companies/HE/106278"]}, {"id": "owner_25_e0", "label": "Dan David Prize", "type": "entite", "category": "finance", "info": "Prix international, Israel.", "owner_id": "owner_25"}, {"id": "owner_25_e1", "label": "Sociétés à Chypre\n(HE/106278)", "type": "entite", "category": "finance", "info": "Mandats au registre chypriote.", "owner_id": "owner_25"}, {"id": "owner_26", "label": "17:2245", "type": "proprietaire", "category": "institutionnel", "sector": "patrimoine", "description": "Parcelle riveraine de 2'942 m² à Cologny. Société coopérative locale (selon le registre foncier). Site patrimonial protégé « La Belotte » (bâtiment classé, code 2010-25424).", "parcelles": [{"id": "CO-2245", "commune": "Cologny", "parcelle": "2245", "surface": 2942, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Cologny 2245", "total_surface": 2942, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_26_e0", "label": "Site protégé\n'La Belotte'", "type": "entite", "category": "institutionnel", "info": "Patrimoine bâti protégé (code 2010-25424).", "owner_id": "owner_26"}, {"id": "owner_27", "label": "19:223", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 1'569 m² à Céligny. Investisseur cité dans les Offshore Leaks de l'ICIJ. Suivi par MarketScreener (transactions d'initiés).", "parcelles": [{"id": "CE-223", "commune": "Céligny", "parcelle": "223", "surface": 1569, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 223", "total_surface": 1569, "n_parcelles": 1, "sources_urls": ["https://offshoreleaks.icij.org/nodes/11013546", "https://www.marketscreener.com/insider/HERVE-CHANUT-A0E600/"]}, {"id": "owner_27_e1", "label": "MarketScreener\n(insider tracking)", "type": "source", "category": "finance", "info": "Suivi des transactions d'initiés.", "owner_id": "owner_27"}, {"id": "owner_28", "label": "19:247", "type": "proprietaire", "category": "autre", "sector": "immobilier", "description": "Parcelle riveraine de 12'380 m² à Céligny. Société propriétaire du domaine « La Perchette », actuellement en vente. Société immobilière au registre genevois.", "parcelles": [{"id": "CE-247", "commune": "Céligny", "parcelle": "247", "surface": 12380, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 247", "total_surface": 12380, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_28_e0", "label": "La Perchette SARL", "type": "entite", "category": "autre", "info": "Société propriétaire (en vente).", "owner_id": "owner_28"}, {"id": "owner_29", "label": "19:248", "type": "proprietaire", "category": "autre", "sector": "local-politique", "description": "Parcelle riveraine de 9'154 m² à Céligny. Ancienne maire de Céligny, décédée. Statut foncier en transition.", "parcelles": [{"id": "CE-248", "commune": "Céligny", "parcelle": "248", "surface": 9154, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 248", "total_surface": 9154, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_29_e0", "label": "Ex-maire de Céligny", "type": "personne", "category": "autre", "info": "Personnalité politique locale.", "owner_id": "owner_29"}, {"id": "owner_30", "label": "19:252", "type": "proprietaire", "category": "industrie", "sector": "industrie-automobile", "description": "Parcelle riveraine de 23'236 m² à Céligny. Veuve du fondateur d'AMAG (importateur Volkswagen en Suisse, décédé en 2012), figure historique des grandes fortunes suisses. AMAG est impliquée dans le scandale Dieselgate : procédure du Ministère Public de la Confédération arrêtée, premières actions civiles en Suisse contre VW/AMAG.", "parcelles": [{"id": "CE-252", "commune": "Céligny", "parcelle": "252", "surface": 23236, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 252", "total_surface": 23236, "n_parcelles": 1, "sources_urls": ["https://www.24heures.ch/amag-et-vw-obtiennent-gain-de-cause-539129575637", "https://www.swissinfo.ch/fre/la-proc%C3%A9dure-du-mpc-contre-vw-et-amag-%C3%A0-l-arr%C3%AAt/47096422"]}, {"id": "owner_30_e0", "label": "[…]\n(défunt mari)", "type": "personne", "category": "industrie", "info": "Fondateur d'AMAG, décédé 2012, milliardaire suisse.", "owner_id": "owner_30"}, {"id": "owner_30_e1", "label": "AMAG (importateur\nVW Suisse)", "type": "entite", "category": "industrie", "info": "Importateur officiel Volkswagen en Suisse.", "owner_id": "owner_30"}, {"id": "owner_30_e2", "label": "Dieselgate / VW\n(MPC arrêté)", "type": "affaire", "category": "industrie", "info": "Procédure MPC contre VW et AMAG arrêtée.", "owner_id": "owner_30"}, {"id": "owner_30_e3", "label": "Actions civiles\nDieselgate Suisse", "type": "affaire", "category": "industrie", "info": "Premières actions civiles en Suisse contre VW/AMAG.", "owner_id": "owner_30"}, {"id": "owner_31", "label": "19:314", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 1'002 m² à Céligny. Société liée à la sphère du grand groupe de parfums et arômes (cluster industrie-parfums à Genthod).", "parcelles": [{"id": "CE-314", "commune": "Céligny", "parcelle": "314", "surface": 1002, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 314", "total_surface": 1002, "n_parcelles": 1, "sources_urls": ["https://www.moneyhouse.ch/fr/company/freedom-sa-11248626541/management"]}, {"id": "owner_31_e0", "label": "Sphère […]", "type": "entite", "category": "industrie", "info": "Voir parcelle Genthod 1164.", "owner_id": "owner_31"}, {"id": "owner_32", "label": "19:315", "type": "proprietaire", "category": "autre", "sector": "petrole", "description": "Parcelle riveraine de 1'660 m² à Céligny. Ancien patron suisse de Lundin Energy (pétrole/gaz). Professeur à l'IMD Lausanne, ancien directeur du Boston Consulting Group. Lundin Energy a été jugée en Suède pour complicité de crimes de guerre au Soudan ; BCG a été condamnée séparément pour pots-de-vin en Angola.", "parcelles": [{"id": "CE-315", "commune": "Céligny", "parcelle": "315", "surface": 1660, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 315", "total_surface": 1660, "n_parcelles": 1, "sources_urls": ["https://www.imd.org/faculty/professors/knut-haanaes/", "https://www.lematin.ch/story/proces-contre-lex-patron-suisse-de-lundin-autorise-180471356845"]}, {"id": "owner_32_e0", "label": "Lundin Energy\n(pétrole)", "type": "entite", "category": "autre", "info": "Compagnie pétrolière suédoise. Aujourd'hui dans AkerBP.", "owner_id": "owner_32"}, {"id": "owner_32_e1", "label": "Procès Lundin\ncrimes de guerre\nSoudan (Stockholm)", "type": "affaire", "category": "autre", "info": "Procès historique en Suède pour complicité de crimes de guerre dans les années 1990-2000.", "owner_id": "owner_32"}, {"id": "owner_32_e2", "label": "IMD Lausanne", "type": "entite", "category": "autre", "info": "Professeur.", "owner_id": "owner_32"}, {"id": "owner_32_e3", "label": "Boston Consulting\nGroup (BCG)", "type": "entite", "category": "autre", "info": "Ex-directeur. BCG condamné pour pots-de-vin Angola.", "owner_id": "owner_32"}, {"id": "owner_32_e4", "label": "BCG pots-de-vin\nAngola", "type": "affaire", "category": "autre", "info": "Condamnation BCG dans une affaire angolaise.", "owner_id": "owner_32"}, {"id": "owner_33", "label": "19:370", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 19'496 m² à Céligny. Société immobilière au registre suisse (Zefix 66050). Liens avec des dirigeants français (sphère Castel).", "parcelles": [{"id": "CE-370", "commune": "Céligny", "parcelle": "370", "surface": 19496, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 370", "total_surface": 19496, "n_parcelles": 1, "sources_urls": ["https://www.zefix.ch/fr/search/entity/list/firm/66050"]}, {"id": "owner_33_e0", "label": "La Garlège SA", "type": "entite", "category": "opaque", "info": "Zefix 66050.", "owner_id": "owner_33"}, {"id": "owner_33_e1", "label": "Dirigeants français\n(Castel)", "type": "entite", "category": "opaque", "info": "Liens avec Romy Castel.", "owner_id": "owner_33"}, {"id": "owner_34", "label": "19:489", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 8'007 m² à Céligny. Associé senior d'une banque privée genevoise (fondée 1844). La banque est impliquée dans plusieurs affaires : faillite NBT (68 M CHF transitant par Genève), détournement au Brésil, citations dans les Offshore Leaks, nouvelle inculpation en 2024.", "parcelles": [{"id": "CE-489", "commune": "Céligny", "parcelle": "489", "surface": 8007, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 489", "total_surface": 8007, "n_parcelles": 1, "sources_urls": ["https://francoispilet.net/nouvelle-inculpation-dans-laffaire-bordier/", "https://fr.wikipedia.org/wiki/Bordier_%26_Cie"]}, {"id": "owner_34_e0", "label": "[…] & Cie\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise, fondée 1844.", "owner_id": "owner_34"}, {"id": "owner_34_e1", "label": "Nouvelle inculpation\n2024 (Pilet)", "type": "affaire", "category": "finance", "info": "François Pilet : nouvelle inculpation dans l'affaire […].", "owner_id": "owner_34"}, {"id": "owner_34_e2", "label": "Banque russe NBT\n68 M CHF blanchiment", "type": "affaire", "category": "finance", "info": "Faillite NBT, 68 M CHF transitaient par Genève.", "owner_id": "owner_34"}, {"id": "owner_34_e3", "label": "Détournement Brésil\n(Agefi, AllNews)", "type": "affaire", "category": "finance", "info": "[…] impliquée dans une affaire brésilienne.", "owner_id": "owner_34"}, {"id": "owner_35", "label": "19:504", "type": "proprietaire", "category": "finance", "sector": "finance-discret", "description": "Parcelle riveraine de 2'373 m² à Céligny. Cité dans les Offshore Leaks de l'ICIJ.", "parcelles": [{"id": "CE-504", "commune": "Céligny", "parcelle": "504", "surface": 2373, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 504", "total_surface": 2373, "n_parcelles": 1, "sources_urls": ["https://offshoreleaks.icij.org/nodes/12195487"]}, {"id": "owner_36", "label": "19:609", "type": "proprietaire", "category": "royaute", "sector": "royaute-historique", "description": "Parcelle riveraine de 3'154 m² à Céligny. Société liée à une famille royale italienne en exil depuis 1946 (Maison de Savoie). Patrimoine dynastique. La famille séjourne notamment à Gstaad.", "parcelles": [{"id": "CE-609", "commune": "Céligny", "parcelle": "609", "surface": 3154, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Céligny 609", "total_surface": 3154, "n_parcelles": 1, "sources_urls": ["https://www.moneyhouse.ch/fr/company/societe-de-la-poissonniere-sa-12572578451/management", "https://fr.wikipedia.org/wiki/Marie-Gabrielle_de_Savoie"]}, {"id": "owner_36_e0", "label": "Maison de Savoie\n(ex-royauté Italie)", "type": "entite", "category": "royaute", "info": "Dynastie royale italienne, exil depuis 1946.", "owner_id": "owner_36"}, {"id": "owner_36_e1", "label": "[…]\nde Savoie", "type": "personne", "category": "royaute", "info": "Fille d'Umberto II, dernier roi d'Italie.", "owner_id": "owner_36"}, {"id": "owner_36_e2", "label": "Gstaad — vacances", "type": "entite", "category": "royaute", "info": "Centre de villégiature de la famille.", "owner_id": "owner_36"}, {"id": "owner_37", "label": "23:629", "type": "proprietaire", "category": "autre", "sector": "local-discret", "description": "Parcelle riveraine de 260 m² à Genthod. Lié à la sphère d'une propriété voisine (Genthod 879).", "parcelles": [{"id": "GE-629", "commune": "Genthod", "parcelle": "629", "surface": 260, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 629", "total_surface": 260, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_38", "label": "23:833\n+ 1 autre", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "2 parcelles riveraines à Genthod, totalisant 26'423 m². Membre de la famille fondatrice d'un grand groupe de parfums et arômes (cluster industrie-parfums de Genthod, fusion en 2023 avec Royal DSM pour former dsm-firmenich, 13 Mds CHF). Historique : enlèvement au Brésil en 1975 par le mouvement MR-8 (rançon 6 M$). Enquêtes de la Commission européenne sur les ententes dans le secteur parfums/arômes.", "parcelles": [{"id": "GE-833", "commune": "Genthod", "parcelle": "833", "surface": 17837, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "GE-1875", "commune": "Genthod", "parcelle": "1875", "surface": 8586, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 833, Genthod 1875", "total_surface": 26423, "n_parcelles": 2, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich", "https://www.informelles.media/vues-du-monde-fortunes-suisses/"]}, {"id": "owner_38_e0", "label": "[…]\nInternational", "type": "entite", "category": "industrie", "info": "Groupe mondial de parfums et arômes, basé Genève.", "owner_id": "owner_38"}, {"id": "owner_38_e1", "label": "dsm-firmenich\n(fusion 2023)", "type": "entite", "category": "industrie", "info": "Fusion avec Royal DSM en 2023 (13 Mds CHF).", "owner_id": "owner_38"}, {"id": "owner_38_e2", "label": "Affaire enlèvement\n1975 (rançon 6 M$)", "type": "affaire", "category": "industrie", "info": "Enlèvement […] au Brésil en 1975 par MR-8.", "owner_id": "owner_38"}, {"id": "owner_38_e3", "label": "Ententes UE\nparfums/arômes", "type": "affaire", "category": "industrie", "info": "Enquêtes Commission européenne sur ententes.", "owner_id": "owner_38"}, {"id": "owner_38_e4", "label": "[…]", "type": "entite", "category": "industrie", "info": "Voir GE-833.", "owner_id": "owner_38"}, {"id": "owner_39", "label": "23:873", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 5'696 m² à Genthod. Membre du cluster industrie-parfums de Genthod. Voir le profil principal du groupe (parcelle 23:1164).", "parcelles": [{"id": "GE-873", "commune": "Genthod", "parcelle": "873", "surface": 5696, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 873", "total_surface": 5696, "n_parcelles": 1, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich"]}, {"id": "owner_39_e0", "label": "[…]", "type": "entite", "category": "industrie", "info": "Voir GE-833.", "owner_id": "owner_39"}, {"id": "owner_40", "label": "23:874", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 5'000 m² à Genthod. Membre du cluster industrie-parfums de Genthod. Voir le profil principal du groupe (parcelle 23:1164).", "parcelles": [{"id": "GE-874", "commune": "Genthod", "parcelle": "874", "surface": 5000, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 874", "total_surface": 5000, "n_parcelles": 1, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich"]}, {"id": "owner_40_e0", "label": "[…]", "type": "entite", "category": "industrie", "info": "Voir GE-833.", "owner_id": "owner_40"}, {"id": "owner_41", "label": "23:879", "type": "proprietaire", "category": "autre", "sector": "transition", "description": "Parcelle riveraine de 7'855 m² à Genthod. Propriétaire décédée. Patrimoine en transition.", "parcelles": [{"id": "GE-879", "commune": "Genthod", "parcelle": "879", "surface": 7855, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 879", "total_surface": 7855, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_41_e0", "label": "Juliane […]-Renaud\n(décédée)", "type": "personne", "category": "autre", "info": "Patrimoine en transition.", "owner_id": "owner_41"}, {"id": "owner_42", "label": "23:905\n+ 1 autre", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "2 parcelles riveraines à Genthod, totalisant 4'447 m². Lié à la sphère du grand groupe de parfums et arômes (cluster industrie-parfums). Mandat dans le secteur agricole britannique (Kielder Agro).", "parcelles": [{"id": "GE-905", "commune": "Genthod", "parcelle": "905", "surface": 2269, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "GE-1153", "commune": "Genthod", "parcelle": "1153", "surface": 2178, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 905, Genthod 1153", "total_surface": 4447, "n_parcelles": 2, "sources_urls": ["https://kielderagro.com/our-team/"]}, {"id": "owner_42_e0", "label": "Sphère […]", "type": "entite", "category": "industrie", "info": "Voir GE-1164.", "owner_id": "owner_42"}, {"id": "owner_42_e1", "label": "Kielder Agro (UK)", "type": "entite", "category": "industrie", "info": "Mandat dans le secteur agricole britannique.", "owner_id": "owner_42"}, {"id": "owner_43", "label": "23:972", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 4'632 m² à Genthod. Membre du cluster industrie-parfums de Genthod. Voir le profil principal du groupe (parcelle 23:1164).", "parcelles": [{"id": "GE-972", "commune": "Genthod", "parcelle": "972", "surface": 4632, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 972", "total_surface": 4632, "n_parcelles": 1, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich"]}, {"id": "owner_43_e0", "label": "[…]", "type": "entite", "category": "industrie", "info": "Voir GE-833.", "owner_id": "owner_43"}, {"id": "owner_44", "label": "23:1164", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 2'725 m² à Genthod. Cœur du cluster industrie-parfums de Genthod. Héritière (1936, décédée) du grand groupe de parfums et arômes. Affaire documentée par les Archives contestataires ; enquêtes du Figaro sur le secteur ; enlèvement au Brésil de la famille en 1975 (rançon 6 M$).", "parcelles": [{"id": "GE-1164", "commune": "Genthod", "parcelle": "1164", "surface": 2725, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 1164", "total_surface": 2725, "n_parcelles": 1, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich", "https://www.informelles.media/vues-du-monde-fortunes-suisses/"]}, {"id": "owner_44_e0", "label": "[…]", "type": "entite", "category": "industrie", "info": "Groupe mondial parfums/arômes.", "owner_id": "owner_44"}, {"id": "owner_44_e1", "label": "dsm-firmenich\n(fusion 2023)", "type": "entite", "category": "industrie", "info": "Fusion avec Royal DSM, 13 Mds CHF.", "owner_id": "owner_44"}, {"id": "owner_44_e2", "label": "Affaire […]\n(Archives contestataires)", "type": "affaire", "category": "industrie", "info": "Documentée dans les archives contestataires.", "owner_id": "owner_44"}, {"id": "owner_44_e3", "label": "Enquêtes parfums\n(Le Figaro)", "type": "affaire", "category": "industrie", "info": "Enquêtes sur le secteur.", "owner_id": "owner_44"}, {"id": "owner_44_e4", "label": "Affaire enlèvement\nBrésil 1975 (6 M$)", "type": "affaire", "category": "industrie", "info": "Enlèvement par MR-8.", "owner_id": "owner_44"}, {"id": "owner_45", "label": "23:1165", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 85'460 m² à Genthod. Plus grande parcelle du cluster industrie-parfums (85 460 m²). Domaine de la Maison Lullin-de Saussure (site classé, code 2011-26171).", "parcelles": [{"id": "GE-1165", "commune": "Genthod", "parcelle": "1165", "surface": 85460, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 1165", "total_surface": 85460, "n_parcelles": 1, "sources_urls": ["https://ge.ch/sitg/geodata/SIPATRIMOINE/SI-EVI-OPS/EVI/edition/objets/2011-26171.htm"]}, {"id": "owner_45_e0", "label": "Maison Lullin-de\nSaussure (patrimoine)", "type": "entite", "category": "industrie", "info": "Site classé (code 2011-26171).", "owner_id": "owner_45"}, {"id": "owner_45_e1", "label": "Sphère […]", "type": "entite", "category": "industrie", "info": "Voir GE-1164.", "owner_id": "owner_45"}, {"id": "owner_46", "label": "23:1552", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 8'881 m² à Genthod. Membre du cluster industrie-parfums de Genthod. Voir le profil principal du groupe (parcelle 23:1164).", "parcelles": [{"id": "GE-1552", "commune": "Genthod", "parcelle": "1552", "surface": 8881, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 1552", "total_surface": 8881, "n_parcelles": 1, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich"]}, {"id": "owner_46_e0", "label": "Sphère […]", "type": "entite", "category": "industrie", "info": "Voir GE-1164.", "owner_id": "owner_46"}, {"id": "owner_47", "label": "23:2115", "type": "proprietaire", "category": "industrie", "sector": "industrie-parfums", "description": "Parcelle riveraine de 27'272 m² à Genthod. Membre du cluster industrie-parfums de Genthod. Voir le profil principal du groupe (parcelle 23:1164).", "parcelles": [{"id": "GE-2115", "commune": "Genthod", "parcelle": "2115", "surface": 27272, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 2115", "total_surface": 27272, "n_parcelles": 1, "sources_urls": ["https://www.archivescontestataires.ch/valoriser/ephemeride/laffaire-firmenich"]}, {"id": "owner_47_e0", "label": "[…]", "type": "entite", "category": "industrie", "info": "Voir GE-833.", "owner_id": "owner_47"}, {"id": "owner_48", "label": "23:2532", "type": "proprietaire", "category": "royaute", "sector": "monarchie-Golfe", "description": "Parcelle riveraine de 1'250 m² à Genthod. Cheikh saoudien, autoproclamé « écolo ». Domaine paradisiaque sur l'île d'Arros (Seychelles). Fondateur de la Save Our Seas Foundation (Genève). Voisinage suisse documenté avec une autre grande fortune. Profil « écologique » polémique couvert par Paris Match et Vanity Fair.", "parcelles": [{"id": "GE-2532", "commune": "Genthod", "parcelle": "2532", "surface": 1250, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Genthod 2532", "total_surface": 1250, "n_parcelles": 1, "sources_urls": ["https://www.parismatch.com/Actu/Societe/Un-cheick-ecolo-pour-le-paradis-des-Bettencourt-156937", "https://saveourseas.com/foundation/founder/", "https://www.vanityfair.fr/pouvoir/politique/articles/ile-darros-paradis-maudit/1641"]}, {"id": "owner_48_e0", "label": "Save Our Seas\nFoundation", "type": "entite", "category": "royaute", "info": "Fondateur de la fondation marine basée Genève.", "owner_id": "owner_48"}, {"id": "owner_48_e1", "label": "Île d'Arros\n(Seychelles)", "type": "entite", "category": "royaute", "info": "Domaine paradisiaque privé.", "owner_id": "owner_48"}, {"id": "owner_48_e2", "label": "Famille Bettencourt\n(voisinage)", "type": "entite", "category": "royaute", "info": "Voisinage suisse documenté.", "owner_id": "owner_48"}, {"id": "owner_48_e3", "label": "'Cheick écolo'\n(Paris Match)", "type": "source", "category": "royaute", "info": "Profil 'écologique' polémique.", "owner_id": "owner_48"}, {"id": "owner_49", "label": "28:1330", "type": "proprietaire", "category": "industrie", "sector": "industrie-distribution", "description": "Parcelle riveraine de 5'589 m² à Hermance. Famille d'un holding suisse discret (Manor, Lacoste, etc.). Cité dans les Offshore Leaks de l'ICIJ. Article du Temps sur l'opacité de cette dynastie discrète qui a « croqué le crocodile » (Lacoste).", "parcelles": [{"id": "HE-1330", "commune": "Hermance", "parcelle": "1330", "surface": 5589, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Hermance 1330", "total_surface": 5589, "n_parcelles": 1, "sources_urls": ["https://offshoreleaks.icij.org/nodes/80099385", "https://fr.wikipedia.org/w/index.php?title=Maus_Fr%C3%A8res_Holding&oldid=215519423", "https://www.letemps.ch/suisse/suisses-discrets-ont-croque-crocodile"]}, {"id": "owner_49_e0", "label": "[…] Holding\n(Manor, distribution)", "type": "entite", "category": "industrie", "info": "Holding familial discret. Manor, Lacoste, etc.", "owner_id": "owner_49"}, {"id": "owner_49_e1", "label": "Lacoste\n(crocodile)", "type": "entite", "category": "industrie", "info": "Marque acquise par […].", "owner_id": "owner_49"}, {"id": "owner_49_e3", "label": "Le Temps —\nSuisses discrets", "type": "source", "category": "industrie", "info": "Article documentant l'opacité de […].", "owner_id": "owner_49"}, {"id": "owner_50", "label": "28:2237", "type": "proprietaire", "category": "opaque", "sector": "opaque", "description": "Parcelle riveraine de 3'201 m² à Hermance. Cité dans une procédure ECC Courts (Scherbakova v.). Structures offshore documentées : Topmax Worldwide Limited et Key Platinum Holdings Limited.", "parcelles": [{"id": "HE-2237", "commune": "Hermance", "parcelle": "2237", "surface": 3201, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Hermance 2237", "total_surface": 3201, "n_parcelles": 1, "sources_urls": ["https://www.eccourts.org/judgment/olga-vladimirovna-scherbakova-et-al-v-brigita-morina-et-al-3"]}, {"id": "owner_50_e0", "label": "Topmax Worldwide\n(offshore)", "type": "entite", "category": "opaque", "info": "Société offshore.", "owner_id": "owner_50"}, {"id": "owner_50_e1", "label": "Key Platinum\nHoldings Ltd", "type": "entite", "category": "opaque", "info": "Société offshore.", "owner_id": "owner_50"}, {"id": "owner_50_e2", "label": "Affaire Scherbakova\nv. […] (ECC)", "type": "affaire", "category": "opaque", "info": "Procédure judiciaire ECC Courts.", "owner_id": "owner_50"}, {"id": "owner_51", "label": "28:2263", "type": "proprietaire", "category": "maritime", "sector": "maritime", "description": "Parcelle riveraine de 924 m² à Hermance. Lié à Bulknova SA (courtage maritime). Cité dans les Offshore Leaks de l'ICIJ.", "parcelles": [{"id": "HE-2263", "commune": "Hermance", "parcelle": "2263", "surface": 924, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Hermance 2263", "total_surface": 924, "n_parcelles": 1, "sources_urls": ["https://www.europages.co.uk/BULKNOVA-SA/CHE040913-00101.html", "https://offshoreleaks.icij.org/nodes/20022741"]}, {"id": "owner_51_e0", "label": "Bulknova SA\n(courtage maritime)", "type": "entite", "category": "maritime", "info": "Société de courtage maritime.", "owner_id": "owner_51"}, {"id": "owner_52", "label": "35:242", "type": "proprietaire", "category": "institutionnel", "sector": "institutionnel", "description": "Parcelle riveraine de 41'252 m² à Petit-Saconnex. Propriétaire institutionnel (Ville de Genève). Site protégé : Villa Plantamour, patrimoine historique public.", "parcelles": [{"id": "PS-242", "commune": "Petit-Saconnex", "parcelle": "242", "surface": 41252, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Petit-Saconnex 242", "total_surface": 41252, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_52_e0", "label": "Villa Plantamour\n(patrimoine protégé)", "type": "entite", "category": "institutionnel", "info": "Villa historique, Ville de Genève.", "owner_id": "owner_52"}, {"id": "owner_52_e1", "label": "Ville de Genève", "type": "entite", "category": "institutionnel", "info": "Propriétaire institutionnel.", "owner_id": "owner_52"}, {"id": "owner_53", "label": "35:244", "type": "proprietaire", "category": "institutionnel", "sector": "institutionnel", "description": "Parcelle riveraine de 48'750 m² à Petit-Saconnex. Propriétaire institutionnel (Organisation des Nations Unies). Site protégé : Perle du Lac.", "parcelles": [{"id": "PS-244", "commune": "Petit-Saconnex", "parcelle": "244", "surface": 48750, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Petit-Saconnex 244", "total_surface": 48750, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_53_e0", "label": "Perle du Lac\n(patrimoine protégé)", "type": "entite", "category": "institutionnel", "info": "Domaine ONU.", "owner_id": "owner_53"}, {"id": "owner_53_e1", "label": "ONU (Genève)", "type": "entite", "category": "institutionnel", "info": "Organisation internationale.", "owner_id": "owner_53"}, {"id": "owner_54", "label": "37:501", "type": "proprietaire", "category": "finance", "sector": "finance-philanthropie", "description": "Parcelle riveraine de 2'446 m² à Prégny-Chambésy. Milliardaire canado-suisse, ancien CEO de Trader Classified Media (« Classified ad king »). Family office (Pamoja Capital), fondation philanthropique éponyme. Don de 100 M£ à l'Université d'Oxford documenté par la BBC. Profilé par le WEF (Davos).", "parcelles": [{"id": "PC-501", "commune": "Prégny-Chambésy", "parcelle": "501", "surface": 2446, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 501", "total_surface": 2446, "n_parcelles": 1, "sources_urls": ["https://www.pamojacapital.com/news/2018/11/15/john-macbain-the-classified-ad-king", "https://www.bbc.com/news/uk-england-oxfordshire-67105112", "https://www.weforum.org/people/john-h-mccall-macbain/"]}, {"id": "owner_54_e0", "label": "Trader Classified\nMedia", "type": "entite", "category": "finance", "info": "Ex-CEO. 'Classified ad king'.", "owner_id": "owner_54"}, {"id": "owner_54_e1", "label": "Pamoja Capital", "type": "entite", "category": "finance", "info": "Family office.", "owner_id": "owner_54"}, {"id": "owner_54_e2", "label": "[…]\nFoundation", "type": "entite", "category": "finance", "info": "Fondation philanthropique.", "owner_id": "owner_54"}, {"id": "owner_54_e3", "label": "Oxford University\n(don 100M£)", "type": "entite", "category": "finance", "info": "Don à Oxford documenté par BBC.", "owner_id": "owner_54"}, {"id": "owner_55", "label": "37:562", "type": "proprietaire", "category": "opaque", "sector": "incertain", "description": "Parcelle riveraine de 4'968 m² à Prégny-Chambésy. Hypothèse non confirmée d'un lien avec la famille des eaux Perrier. À vérifier.", "parcelles": [{"id": "PC-562", "commune": "Prégny-Chambésy", "parcelle": "562", "surface": 4968, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 562", "total_surface": 4968, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_55_e0", "label": "Famille Perrier ?\n(hypothèse)", "type": "entite", "category": "opaque", "info": "Hypothèse non confirmée.", "owner_id": "owner_55"}, {"id": "owner_56", "label": "37:594", "type": "proprietaire", "category": "extraction", "sector": "negoce-matieres-premieres", "description": "Parcelle riveraine de 11'923 m² à Prégny-Chambésy. Lié au négociant en matières premières Trafigura (siège Genève), inculpé par le Tribunal pénal fédéral suisse pour corruption en Angola. Site protégé « Le Rivage ».", "parcelles": [{"id": "PC-594", "commune": "Prégny-Chambésy", "parcelle": "594", "surface": 11923, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 594", "total_surface": 11923, "n_parcelles": 1, "sources_urls": ["https://www.bilan.ch/story/tribunal-penal-federal-trafigura-inculpe-en-suisse-pour-corruption-presumee-en-faveur-de-langola-248831194175", "https://en.wikipedia.org/wiki/Michael_Wainwright_%28racing_driver%29"]}, {"id": "owner_56_e0", "label": "Trafigura\n(négoce mat. prem.)", "type": "entite", "category": "extraction", "info": "Négociant en matières premières basé Genève.", "owner_id": "owner_56"}, {"id": "owner_56_e1", "label": "Inculpation\ncorruption Angola\n(Suisse)", "type": "affaire", "category": "extraction", "info": "Trafigura inculpée par le Tribunal pénal fédéral.", "owner_id": "owner_56"}, {"id": "owner_56_e2", "label": "Site protégé\n'Le Rivage'", "type": "entite", "category": "extraction", "info": "Patrimoine bâti protégé.", "owner_id": "owner_56"}, {"id": "owner_56_e3", "label": "[…]", "type": "entite", "category": "extraction", "info": "Pilote automobile (homonyme ou lié).", "owner_id": "owner_56"}, {"id": "owner_57", "label": "37:848", "type": "proprietaire", "category": "royaute", "sector": "royaute-religieuse", "description": "Parcelle riveraine de 4'787 m² à Prégny-Chambésy. Membre d'une famille royale religieuse ismaélienne (frère du précédent imam, décédé en 2024). Affaire de divorce documentée (60 M€, Le Figaro). Patrimoine et organisation spirituelle internationale.", "parcelles": [{"id": "PC-848", "commune": "Prégny-Chambésy", "parcelle": "848", "surface": 4787, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 848", "total_surface": 4787, "n_parcelles": 1, "sources_urls": ["https://en.wikipedia.org/wiki/Amyn_Aga_Khan", "https://www.lefigaro.fr/actualite-france/2011/09/29/01016-20110929ARTFIG00879-le-divorce-a-60-millions-d-euros-du-prince-aga-khan.php"]}, {"id": "owner_57_e0", "label": "Imamat ismaélien\n(Aga Khan)", "type": "entite", "category": "royaute", "info": "Direction spirituelle des ismaéliens.", "owner_id": "owner_57"}, {"id": "owner_57_e1", "label": "Aga Khan IV (frère)", "type": "personne", "category": "royaute", "info": "Imam des Ismaéliens jusqu'en 2024.", "owner_id": "owner_57"}, {"id": "owner_57_e2", "label": "Affaire divorce\n60 M€ (Le Figaro)", "type": "affaire", "category": "royaute", "info": "Divorce coûteux documenté.", "owner_id": "owner_57"}, {"id": "owner_57_e3", "label": "Aga Khan affair\n(Wikipédia)", "type": "affaire", "category": "royaute", "info": "Affaire historique.", "owner_id": "owner_57"}, {"id": "owner_58", "label": "37:963\n+ 1 autre", "type": "proprietaire", "category": "institutionnel", "sector": "institutionnel", "description": "2 parcelles riveraines totalisant 30'962 m². Propriétaire institutionnel (État de Genève). Site protégé : « Domaine de Rivebelle ».", "parcelles": [{"id": "PC-963", "commune": "Prégny-Chambésy", "parcelle": "963", "surface": 11503, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "VE-6634", "commune": "Versoix", "parcelle": "6634", "surface": 19459, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=47&parcelle=6634"}], "parcelles_str": "Prégny-Chambésy 963, Versoix 6634", "total_surface": 30962, "n_parcelles": 2, "sources_urls": []}, {"id": "owner_58_e0", "label": "Domaine de Rivebelle\n(patrimoine protégé)", "type": "entite", "category": "institutionnel", "info": "Site classé.", "owner_id": "owner_58"}, {"id": "owner_58_e1", "label": "État de Genève", "type": "entite", "category": "institutionnel", "info": "Propriétaire institutionnel.", "owner_id": "owner_58"}, {"id": "owner_59", "label": "37:1055", "type": "proprietaire", "category": "heritage", "sector": "heritage-international", "description": "Parcelle riveraine de 9'780 m² à Prégny-Chambésy. Possiblement liée à une famille d'industrie/finance d'Égypte présente dans les 300 plus grandes fortunes de Suisse. Lien à confirmer. Articles mentionnant les propriétés genevoises d'un président camerounais évoquent un voisinage similaire.", "parcelles": [{"id": "PC-1055", "commune": "Prégny-Chambésy", "parcelle": "1055", "surface": 9780, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 1055", "total_surface": 9780, "n_parcelles": 1, "sources_urls": ["https://www.bilan.ch/story/famille-said-300-plus-riches-632586689607", "https://www.stopblablacam.com/economie-et-politique/1710-119-ainsi-donc-paul-biya-possederait-un-chateau-a-geneve-sur-les-bords-du-lac-leman"]}, {"id": "owner_59_e0", "label": "Famille Said\n(Égypte/Suisse)", "type": "entite", "category": "heritage", "info": "Hypothèse à vérifier.", "owner_id": "owner_59"}, {"id": "owner_59_e2", "label": "Paul Biya / château\nGenève (controverse)", "type": "affaire", "category": "heritage", "info": "Article StopBlablaCam : président camerounais et propriétés genevoises.", "owner_id": "owner_59"}, {"id": "owner_60", "label": "37:2129", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 7'828 m² à Prégny-Chambésy. Site protégé « La Grande Pierrière — maison de maître ». Lié à Dimitri Waeber. Le frère du propriétaire est cité dans une procédure pour escroquerie financière (Gotham City, 2022, trois financiers jugés à Genève).", "parcelles": [{"id": "PC-2129", "commune": "Prégny-Chambésy", "parcelle": "2129", "surface": 7828, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 2129", "total_surface": 7828, "n_parcelles": 1, "sources_urls": ["https://gothamcity.ch/2022/05/25/escroquerie-entre-ex-fraudeurs-trois-financiers-juges-a-geneve/"]}, {"id": "owner_60_e0", "label": "Villa U SA", "type": "entite", "category": "opaque", "info": "Société propriétaire.", "owner_id": "owner_60"}, {"id": "owner_60_e1", "label": "[…]", "type": "personne", "category": "opaque", "info": "Lié à la société.", "owner_id": "owner_60"}, {"id": "owner_60_e2", "label": "Frère — escroquerie\nfinancière (Gotham 2022)", "type": "affaire", "category": "opaque", "info": "3 financiers jugés à Genève pour escroquerie entre ex-fraudeurs.", "owner_id": "owner_60"}, {"id": "owner_60_e3", "label": "Site protégé\nLa Grande Pierrière", "type": "entite", "category": "opaque", "info": "Maison de maître classée.", "owner_id": "owner_60"}, {"id": "owner_61", "label": "37:2217", "type": "proprietaire", "category": "industrie", "sector": "industrie-historique", "description": "Parcelle riveraine de 3'867 m² à Prégny-Chambésy. Issue d'une vieille famille industrielle française (sidérurgie de Lorraine), épouse d'un ancien président du MEDEF (groupe Wendel SE, holding industriel français). La famille est historiquement liée à la traite négrière (documenté par Le Point). Site protégé : « La Grande Pierrière — dépendance ».", "parcelles": [{"id": "PC-2217", "commune": "Prégny-Chambésy", "parcelle": "2217", "surface": 3867, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Prégny-Chambésy 2217", "total_surface": 3867, "n_parcelles": 1, "sources_urls": ["https://fr.wikipedia.org/wiki/Ernest-Antoine_Seilli%C3%A8re", "https://www.lepoint.fr/societe/traite-negriere-le-baron-seilliere"]}, {"id": "owner_61_e0", "label": "Famille […] /\nWendel", "type": "entite", "category": "industrie", "info": "Vieille famille industrielle française (sidérurgie de Lorraine).", "owner_id": "owner_61"}, {"id": "owner_61_e1", "label": "Ernest-Antoine\n[…] (mari)", "type": "personne", "category": "industrie", "info": "Ex-président MEDEF, baron […].", "owner_id": "owner_61"}, {"id": "owner_61_e2", "label": "Wendel SE\n(holding)", "type": "entite", "category": "industrie", "info": "Holding industriel français.", "owner_id": "owner_61"}, {"id": "owner_61_e3", "label": "Histoire négrière\n(Le Point)", "type": "affaire", "category": "industrie", "info": "Lien historique de la famille avec la traite négrière documenté.", "owner_id": "owner_61"}, {"id": "owner_61_e4", "label": "Site protégé\nLa Grande Pierrière\n(dépendance)", "type": "entite", "category": "industrie", "info": "Patrimoine bâti.", "owner_id": "owner_61"}, {"id": "owner_62", "label": "47:1941", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 7'575 m² à Versoix. Société immobilière genevoise. Liée à un dirigeant identifié sur LinkedIn. Cité dans les Offshore Leaks de l'ICIJ (entrées multiples).", "parcelles": [{"id": "VE-1941", "commune": "Versoix", "parcelle": "1941", "surface": 7575, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Versoix 1941", "total_surface": 7575, "n_parcelles": 1, "sources_urls": ["https://www.moneyhouse.ch/fr/company/societe-immobiliere-barakat-sa-5406877481/messages", "https://offshoreleaks.icij.org/nodes/11012776", "https://offshoreleaks.icij.org/nodes/14097922"]}, {"id": "owner_62_e0", "label": "Société Immobilière\nBarakat SA", "type": "entite", "category": "opaque", "info": "Société immobilière genevoise.", "owner_id": "owner_62"}, {"id": "owner_62_e1", "label": "[…]\n(LinkedIn)", "type": "personne", "category": "opaque", "info": "Lié à la société.", "owner_id": "owner_62"}, {"id": "owner_63", "label": "47:6482", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 45'521 m² à Versoix. Société immobilière de 45 521 m² (très grande parcelle). Lien évoqué non confirmé avec un homme d'affaires libanais. Profil très opaque.", "parcelles": [{"id": "VE-6482", "commune": "Versoix", "parcelle": "6482", "surface": 45521, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Versoix 6482", "total_surface": 45521, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_63_e0", "label": "Sté Immobilière du\nDomaine de Sans Souci", "type": "entite", "category": "opaque", "info": "Très grande parcelle (45 521 m²).", "owner_id": "owner_63"}, {"id": "owner_63_e1", "label": "Amjad Ghaddar ?\n(non confirmé)", "type": "personne", "category": "opaque", "info": "Lien évoqué non confirmé.", "owner_id": "owner_63"}, {"id": "owner_64", "label": "47:6788", "type": "proprietaire", "category": "finance", "sector": "finance-rothschild", "description": "Parcelle riveraine de 40'110 m² à Versoix. Société liée à la Fondation de prévoyance d'un grand groupe bancaire international (sphère Rothschild). Très grande parcelle (40 110 m²).", "parcelles": [{"id": "VE-6788", "commune": "Versoix", "parcelle": "6788", "surface": 40110, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}], "parcelles_str": "Versoix 6788", "total_surface": 40110, "n_parcelles": 1, "sources_urls": ["https://www.moneyhouse.ch/fr/company/cigogne-sa-11279040511/management", "https://fr.kompass.com/c/fondation-de-prevoyance-edmond-de-rothschild/ch034904/"]}, {"id": "owner_64_e0", "label": "Cigogne SA", "type": "entite", "category": "finance", "info": "Société immobilière genevoise.", "owner_id": "owner_64"}, {"id": "owner_64_e1", "label": "Fondation de prévoyance\nEdmond de Rothschild", "type": "entite", "category": "finance", "info": "Fondation de prévoyance liée à la sphère Rothschild.", "owner_id": "owner_64"}, {"id": "owner_64_e2", "label": "[…]", "type": "personne", "category": "finance", "info": "Lié à la sphère Rothschild.", "owner_id": "owner_64"}, {"id": "owner_64_e3", "label": "Sphère Edmond\nde Rothschild", "type": "entite", "category": "finance", "info": "Banque privée internationale.", "owner_id": "owner_64"}, {"id": "owner_65", "label": "16:5683", "type": "proprietaire", "category": "oligarchie", "sector": "oligarchie", "description": "Parcelle riveraine de 11'000 m² à Collonge-Bellerive. Fils de la première fortune d'Ukraine (charbon/acier, Forbes 7,2 Mds$). Acquisition de deux villas à Collonge-Bellerive en 2020-2021 pour 104 M CHF. Études au Rosey (école privée, Rolle) puis master de finance à Londres. Le père est lié au conglomérat DTEK (énergie) et à Metinvest (sidérurgie ; aciérie Azovstal de Marioupol détruite en 2022, filiale à Genève) ainsi qu'à la campagne Trump 2016 via Manafort (condamné). Famille classée 4-5 Mds CHF par Bilan (2023).", "parcelles": [{"id": "CB-5683", "commune": "Collonge-Bellerive", "parcelle": "5683", "surface": 11000, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=5683"}], "parcelles_str": "Collonge-Bellerive 5683", "total_surface": 11000, "n_parcelles": 1, "sources_urls": ["https://www.letemps.ch/economie/finance/oligarques-russes-ukrainiens-genevois", "https://www.tdg.ch/larrivee-d-un-oligarque-ukrainien-fait-jaser-cologny", "https://www.forbes.com/profile/rinat-akhmetov/", "https://www.bilan.ch/300-plus-riches", "https://en.wikipedia.org/wiki/Rinat_Akhmetov"]}, {"id": "owner_65_e0", "label": "[…]\n(père, oligarque)", "type": "personne", "category": "oligarchie", "info": "1ère fortune Ukraine, charbon/acier, Forbes 7,2 Mds$", "owner_id": "owner_65"}, {"id": "owner_65_e1", "label": "DTEK\n(énergie Ukraine)", "type": "entite", "category": "oligarchie", "info": "Géant énergétique ukrainien, emploie Damir.", "owner_id": "owner_65"}, {"id": "owner_65_e2", "label": "Metinvest\n(sidérurgie)", "type": "entite", "category": "oligarchie", "info": "Aciérie Azovstal Marioupol détruite 2022. Filiale Genève.", "owner_id": "owner_65"}, {"id": "owner_65_e4", "label": "Manafort / Trump\ncampagne 2016", "type": "affaire", "category": "oligarchie", "info": "Père a employé Manafort (campagne Trump). Manafort condamné.", "owner_id": "owner_65"}, {"id": "owner_65_e5", "label": "Le Temps 2021\nTDG 2022", "type": "source", "category": "oligarchie", "info": "Couverture suisse documentée.", "owner_id": "owner_65"}, {"id": "owner_66", "label": "16:7978", "type": "proprietaire", "category": "industrie", "sector": "industrie-luxe", "description": "Parcelle riveraine de 5'000 m² à Collonge-Bellerive. Membres d'une famille propriétaire d'une grande maison de couture (haute couture, co-fondée en 1924). Le frère aîné est domicilié à Cologny et classé première fortune de Suisse (41-42 Mds CHF par Bilan 2023) ; son frère vit à New York. Patrimoine : maison de couture, marque de cosmétiques, vignobles bordelais (Rauzan-Ségla, Canon), Holland & Holland. Family office (Mousse Partners, participation dans Rothschild & Co). Historique : aryanisation des biens familiaux sous Vichy (1940-1944), tentative de récupération de la maison par Coco Chanel sous l'occupation.", "parcelles": [{"id": "CB-7978", "commune": "Collonge-Bellerive", "parcelle": "7978", "surface": 5000, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=7978"}], "parcelles_str": "Collonge-Bellerive 7978", "total_surface": 5000, "n_parcelles": 1, "sources_urls": ["https://www.bilan.ch/300-plus-riches", "https://www.forbes.com/profile/alain-wertheimer/", "https://www.swissinfo.ch/fre/economie/la-famille-wertheimer-proprietaire-de-chanel", "https://www.blick.ch/fr/economie/wertheimer-chanel-fortune-suisse", "https://en.wikipedia.org/wiki/Wertheimer_family"]}, {"id": "owner_66_e0", "label": "Chanel\n(haute couture)", "type": "entite", "category": "industrie", "info": "Co-fondé en 1924 par Pierre […] + Coco Chanel.", "owner_id": "owner_66"}, {"id": "owner_66_e1", "label": "Famille […]\n(juifs ashkénazes)", "type": "entite", "category": "industrie", "info": "Originaire Empire austro-hongrois, haute bourgeoisie juive européenne.", "owner_id": "owner_66"}, {"id": "owner_66_e2", "label": "Gérard […]\n(1ère fortune CH)", "type": "personne", "category": "industrie", "info": "Domicilié Cologny, 41-42 Mds CHF (Bilan 2023).", "owner_id": "owner_66"}, {"id": "owner_66_e3", "label": "Alain […]\n(frère)", "type": "personne", "category": "industrie", "info": "Co-propriétaire Chanel, vit New York.", "owner_id": "owner_66"}, {"id": "owner_66_e4", "label": "Mousse Partners\n(participation Rothschild)", "type": "entite", "category": "industrie", "info": "Family office. Participation banque Rothschild & Co.", "owner_id": "owner_66"}, {"id": "owner_66_e5", "label": "Aryanisation Vichy\n1940-1944", "type": "affaire", "category": "industrie", "info": "Aryanisation des biens juifs sous Vichy. Coco Chanel a tenté de récupérer Chanel sous l'occupation.", "owner_id": "owner_66"}, {"id": "owner_66_e6", "label": "Châteaux viticoles\n(Rauzan-Ségla, Canon)", "type": "entite", "category": "industrie", "info": "Vignobles Margaux et Saint-Émilion.", "owner_id": "owner_66"}, {"id": "owner_66_e7", "label": "Bilan / Forbes /\nSwissInfo / Blick", "type": "source", "category": "industrie", "info": "Couverture média systématique.", "owner_id": "owner_66"}, {"id": "owner_67", "label": "19:?\n+ 1 autre", "type": "proprietaire", "category": "autre", "sector": "industrie-mode", "description": "2 parcelles riveraines totalisant 18'124 m². Famille fondatrice d'un grand groupe de mode américain (jeans Guess, fondé en 1981 en Californie, NYSE 4,2 Mds$). Quatre frères, nés au Maroc, élevés à Marseille, partis en Californie au début des années 1980. Marques : Guess et Gc (montres Swiss Made, lancées en 1997). Un membre lié à des transactions immobilières à Cologny (acquisition de 17 M CHF, TDG 2021).", "parcelles": [{"id": "CE-MARCIANO", "commune": "Céligny", "parcelle": "?", "surface": 6499, "lien_rf": "https://www.etat.ge.ch/terextraitfoncier"}, {"id": "HE-2236", "commune": "Hermance", "parcelle": "2236", "surface": 11625, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=28&parcelle=2236"}], "parcelles_str": "Céligny ?, Hermance 2236", "total_surface": 18124, "n_parcelles": 2, "sources_urls": ["https://www.tdg.ch/a-cologny-la-vente-d-une-propriete-de-prestige-fait-des-vagues", "https://www.worldtempus.com/profil-famille-marciano", "https://en.wikipedia.org/wiki/Guess_(clothing)"]}, {"id": "owner_67_e0", "label": "Guess\n(mode, jeans)", "type": "entite", "category": "autre", "info": "Fondé 1981 Californie. Stoned-washed jeans. NYSE 4,2 Mds$.", "owner_id": "owner_67"}, {"id": "owner_67_e1", "label": "Famille […]\n(Maroc → Marseille\n→ Californie)", "type": "entite", "category": "autre", "info": "4 frères : Georges, Maurice, Armand, Paul. Fils d'un rabbin.", "owner_id": "owner_67"}, {"id": "owner_67_e2", "label": "Gc (montres)", "type": "entite", "category": "autre", "info": "Marque horlogère Swiss Made lancée 1997.", "owner_id": "owner_67"}, {"id": "owner_67_e3", "label": "Thierry […]\n(lié transactions Cologny)", "type": "personne", "category": "autre", "info": "Acquisition propriété 17 M CHF Cologny (TDG 2021).", "owner_id": "owner_67"}, {"id": "owner_67_e4", "label": "TDG — vente\npropriété Cologny", "type": "source", "category": "autre", "info": "Article 'A Cologny, la vente d'une propriété de prestige fait des vagues'.", "owner_id": "owner_67"}, {"id": "owner_67_e5", "label": "WorldTempus", "type": "source", "category": "autre", "info": "Profil famille […].", "owner_id": "owner_67"}, {"id": "owner_68", "label": "16:6024", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 4'500 m² à Collonge-Bellerive. Membre d'une famille bancaire genevoise (banque privée).", "parcelles": [{"id": "CB-6024", "commune": "Collonge-Bellerive", "parcelle": "6024", "surface": 4500, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=6024"}], "parcelles_str": "Collonge-Bellerive 6024", "total_surface": 4500, "n_parcelles": 1, "sources_urls": ["https://www.bonna-cie.ch/", "https://fr.wikipedia.org/wiki/Banque_Bonna"]}, {"id": "owner_68_e0", "label": "[…] SA\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise.", "owner_id": "owner_68"}, {"id": "owner_68_e1", "label": "Famille […]", "type": "entite", "category": "finance", "info": "Famille bancaire genevoise.", "owner_id": "owner_68"}, {"id": "owner_69", "label": "16:4958", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 4'000 m² à Collonge-Bellerive. Membre d'une famille bancaire genevoise (banque privée). Voir aussi parcelle 16:6024.", "parcelles": [{"id": "CB-4958", "commune": "Collonge-Bellerive", "parcelle": "4958", "surface": 4000, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=4958"}], "parcelles_str": "Collonge-Bellerive 4958", "total_surface": 4000, "n_parcelles": 1, "sources_urls": ["https://www.bonna-cie.ch/"]}, {"id": "owner_69_e0", "label": "[…] SA\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise.", "owner_id": "owner_69"}, {"id": "owner_69_e1", "label": "Famille […]", "type": "entite", "category": "finance", "info": "Famille bancaire genevoise.", "owner_id": "owner_69"}, {"id": "owner_70", "label": "2:5843", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 2'300 m² à Anières. Issu d'une vieille dynastie bancaire genevoise (Hentsch Heritage SA, ancienne banque Hentsch & Cie historique). Liens avec les sphères Pictet et Bordier.", "parcelles": [{"id": "AN-5843", "commune": "Anières", "parcelle": "5843", "surface": 2300, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=5843"}], "parcelles_str": "Anières 5843", "total_surface": 2300, "n_parcelles": 1, "sources_urls": ["https://www.hentsch-cie.com/", "https://fr.wikipedia.org/wiki/Hentsch_%26_Cie"]}, {"id": "owner_70_e0", "label": "[…] SA", "type": "entite", "category": "finance", "info": "Société de gestion patrimoniale.", "owner_id": "owner_70"}, {"id": "owner_70_e1", "label": "Famille […]\n(banque privée)", "type": "entite", "category": "finance", "info": "Vieille famille bancaire genevoise.", "owner_id": "owner_70"}, {"id": "owner_71", "label": "2:4612", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 1'584 m² à Anières. Famille d'une des plus anciennes banques privées genevoises (fondée 1819).", "parcelles": [{"id": "AN-4612", "commune": "Anières", "parcelle": "4612", "surface": 1584, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=4612"}], "parcelles_str": "Anières 4612", "total_surface": 1584, "n_parcelles": 1, "sources_urls": ["https://www.mirabaud.com/", "https://fr.wikipedia.org/wiki/Mirabaud_%26_Cie"]}, {"id": "owner_71_e0", "label": "[…] & Cie SA\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise fondée 1819.", "owner_id": "owner_71"}, {"id": "owner_71_e1", "label": "Famille […]", "type": "entite", "category": "finance", "info": "Famille bancaire historique genevoise.", "owner_id": "owner_71"}, {"id": "owner_72", "label": "2:5529", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 4'173 m² à Anières. Famille liée à la sphère Mirabaud (ancienne dénomination historique Mirabaud-Demole).", "parcelles": [{"id": "AN-5529", "commune": "Anières", "parcelle": "5529", "surface": 4173, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=5529"}], "parcelles_str": "Anières 5529", "total_surface": 4173, "n_parcelles": 1, "sources_urls": ["https://fr.wikipedia.org/wiki/Mirabaud_%26_Cie"]}, {"id": "owner_72_e0", "label": "[…]-[…]\n(historique)", "type": "entite", "category": "finance", "info": "Ancienne dénomination de la banque […].", "owner_id": "owner_72"}, {"id": "owner_72_e1", "label": "Famille […]", "type": "entite", "category": "finance", "info": "Famille bancaire genevoise.", "owner_id": "owner_72"}, {"id": "owner_73", "label": "2:6286\n+ 2 autres", "type": "proprietaire", "category": "oligarchie", "sector": "oligarchie", "description": "3 parcelles riveraines à Anières, totalisant 6'093 m². Homme d'affaires russo-azerbaïdjanais (né en 1977 à Bakou). Ancien collaborateur de Litasco (filiale suisse de Lukoil, 1997-2007). Fondateur de Riroil Sàrl (Genève, 2004), de REILGO/ISR Trans (transport de pétrole, Russie) et de R Group Holding (Bakou, 2022). Études à Genève (European University 1998, International University 2001). Bureaux perquisitionnés à Moscou en août 2025. Porte-drapeau de l'Azerbaïdjan aux JO d'hiver de Sotchi 2014.", "parcelles": [{"id": "AN-6286", "commune": "Anières", "parcelle": "6286", "surface": 3093, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=6286"}, {"id": "AN-6287", "commune": "Anières", "parcelle": "6287", "surface": 1500, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=6287"}, {"id": "AN-6217", "commune": "Anières", "parcelle": "6217", "surface": 1500, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=6217"}], "parcelles_str": "Anières 6286, Anières 6287, Anières 6217", "total_surface": 6093, "n_parcelles": 3, "sources_urls": ["https://en.wikipedia.org/wiki/Rahman_Khalilov", "https://www.moneyhouse.ch/fr/company/r-group-holding-sa-4627425921", "https://report.az/en/region/russian-security-forces-raid-oil-transport-company-owned-by-azerbaijani-businessman"]}, {"id": "owner_73_e0", "label": "Lukoil / Litasco SA\n(Genève)", "type": "entite", "category": "oligarchie", "info": "Filiale suisse de Lukoil. Carrière 1997-2007.", "owner_id": "owner_73"}, {"id": "owner_73_e1", "label": "Riroil Sàrl\n(Genève, 2004)", "type": "entite", "category": "oligarchie", "info": "Société de trading pétrolier fondée à Genève.", "owner_id": "owner_73"}, {"id": "owner_73_e2", "label": "REILGO / ISR Trans\n(transport pétrole)", "type": "entite", "category": "oligarchie", "info": "Transport pétrole et produits pétroliers, Russie.", "owner_id": "owner_73"}, {"id": "owner_73_e3", "label": "R Group Holding\n(Bakou)", "type": "entite", "category": "oligarchie", "info": "Holding industriel azerbaïdjanais, fondé 2022.", "owner_id": "owner_73"}, {"id": "owner_73_e4", "label": "Perquisition Moscou\n(août 2025)", "type": "affaire", "category": "oligarchie", "info": "Forces de sécurité russes ont perquisitionné les bureaux Railgo en août 2025.", "owner_id": "owner_73"}, {"id": "owner_73_e5", "label": "Sotchi 2014\n(porte-drapeau)", "type": "entite", "category": "oligarchie", "info": "Porte-drapeau azerbaïdjanais aux JO d'hiver 2014.", "owner_id": "owner_73"}, {"id": "owner_73_e6", "label": "Wikipedia / Report.az", "type": "source", "category": "oligarchie", "info": "Documentation publique.", "owner_id": "owner_73"}, {"id": "owner_74", "label": "28:2144\n+ 1 autre", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "2 parcelles riveraines à Hermance, totalisant 8'072 m². « Roi des Eurobonds » (1940-2025). Ancien président de Credit Suisse First Boston (1989-1994), vice-président de Barclays Capital (1998-2014). Pionnier de l'accès aux marchés de capitaux russes (Rosneft, rencontre avec Poutine en 2006). Vice-président du conseil d'administration de Novartis. Cofondateur de Marcuard Heritage (Zurich, 2003) et de MC Securities (Russie, 220 employés). Décédé le 1er décembre 2025.", "parcelles": [{"id": "HE-2144", "commune": "Hermance", "parcelle": "2144", "surface": 4087, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=28&parcelle=2144"}, {"id": "HE-2145", "commune": "Hermance", "parcelle": "2145", "surface": 3985, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=28&parcelle=2145"}], "parcelles_str": "Hermance 2144, Hermance 2145", "total_surface": 8072, "n_parcelles": 2, "sources_urls": ["https://www.nzz.ch/finanzen/hans-joerg-rudloff-koenig-der-eurobonds-gestorben", "https://en.wikipedia.org/wiki/Hans-J%C3%B6rg_Rudloff", "https://www.bloomberg.com/news/articles/hans-jorg-rudloff-credit-suisse-eurobonds"]}, {"id": "owner_74_e0", "label": "Credit Suisse\nFirst Boston (CSFB)", "type": "entite", "category": "finance", "info": "Ex-président 1989-1994. CS racheté par UBS en 2023.", "owner_id": "owner_74"}, {"id": "owner_74_e1", "label": "Barclays Capital", "type": "entite", "category": "finance", "info": "Vice-président de la banque d'investissement 1998-2014.", "owner_id": "owner_74"}, {"id": "owner_74_e2", "label": "Marcuard Heritage\n(Zurich)", "type": "entite", "category": "finance", "info": "Cofondateur 2003, gestionnaire de fortune.", "owner_id": "owner_74"}, {"id": "owner_74_e3", "label": "Novartis", "type": "entite", "category": "finance", "info": "Vice-président du conseil d'administration.", "owner_id": "owner_74"}, {"id": "owner_74_e4", "label": "MC Securities\n(Russie)", "type": "entite", "category": "finance", "info": "Société active en Russie post-URSS, 220 employés.", "owner_id": "owner_74"}, {"id": "owner_74_e5", "label": "Marchés russes\nRosneft / Poutine 2006", "type": "affaire", "category": "finance", "info": "Pionnier d'accès aux marchés de capitaux russes. Rencontre Poutine 2006.", "owner_id": "owner_74"}, {"id": "owner_74_e6", "label": "Décès 1er déc. 2025\n(NZZ)", "type": "source", "category": "finance", "info": "Avis publié dans la NZZ.", "owner_id": "owner_74"}, {"id": "owner_75", "label": "28:2241", "type": "proprietaire", "category": "autre", "sector": "heritage-local", "description": "Parcelle riveraine de 29'414 m² à Hermance. Très grand domaine ancestral (29 414 m²). Quatre copropriétaires d'une famille bourgeoise locale, profil discret.", "parcelles": [{"id": "HE-2241", "commune": "Hermance", "parcelle": "2241", "surface": 29414, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=28&parcelle=2241"}], "parcelles_str": "Hermance 2241", "total_surface": 29414, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_75_e0", "label": "Famille […]-[…]\n(Hermance)", "type": "entite", "category": "autre", "info": "Quatre copropriétaires sur 4 parcelles (~34 000 m² total).", "owner_id": "owner_75"}, {"id": "owner_75_e1", "label": "Pascal […]\n(1938, doyen)", "type": "personne", "category": "autre", "info": "Aîné des copropriétaires.", "owner_id": "owner_75"}, {"id": "owner_76", "label": "47:4846", "type": "proprietaire", "category": "autre", "sector": "diplomatique", "description": "Parcelle riveraine de 41'872 m² à Versoix. Mission permanente du Japon auprès de l'ONU à Genève. Très grande parcelle riveraine (41 872 m²) à Versoix. Immunité diplomatique.", "parcelles": [{"id": "VE-4846", "commune": "Versoix", "parcelle": "4846", "surface": 41872, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=47&parcelle=4846"}], "parcelles_str": "Versoix 4846", "total_surface": 41872, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_76_e0", "label": "Mission permanente\nJapon ONU Genève", "type": "entite", "category": "autre", "info": "Représentation diplomatique.", "owner_id": "owner_76"}, {"id": "owner_76_e1", "label": "État du Japon", "type": "entite", "category": "autre", "info": "État souverain, propriétaire institutionnel.", "owner_id": "owner_76"}, {"id": "owner_77", "label": "37:474", "type": "proprietaire", "category": "autre", "sector": "diplomatique", "description": "Parcelle riveraine de 4'334 m² à Pregny-Chambésy. Domaine de la République de Turquie à Pregny-Chambésy. Mission diplomatique.", "parcelles": [{"id": "PC-474", "commune": "Pregny-Chambésy", "parcelle": "474", "surface": 4334, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=37&parcelle=474"}], "parcelles_str": "Pregny-Chambésy 474", "total_surface": 4334, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_77_e0", "label": "République de Turquie", "type": "entite", "category": "autre", "info": "Mission diplomatique.", "owner_id": "owner_77"}, {"id": "owner_78", "label": "6:1936", "type": "proprietaire", "category": "autre", "sector": "diplomatique", "description": "Parcelle riveraine de 2'749 m² à Bellevue. Domaine de la République algérienne à Bellevue. Mission diplomatique.", "parcelles": [{"id": "BV-1936", "commune": "Bellevue", "parcelle": "1936", "surface": 2749, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=6&parcelle=1936"}], "parcelles_str": "Bellevue 1936", "total_surface": 2749, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_78_e0", "label": "République algérienne", "type": "entite", "category": "autre", "info": "Mission diplomatique.", "owner_id": "owner_78"}, {"id": "owner_79", "label": "16:9523", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 2'972 m² à Collonge-Bellerive. Membre d'une famille bancaire genevoise historique (banque privée fondée 1844). Voir aussi parcelle 19:489.", "parcelles": [{"id": "CB-9523", "commune": "Collonge-Bellerive", "parcelle": "9523", "surface": 2972, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=9523"}], "parcelles_str": "Collonge-Bellerive 9523", "total_surface": 2972, "n_parcelles": 1, "sources_urls": ["https://francoispilet.net/nouvelle-inculpation-dans-laffaire-bordier/", "https://fr.wikipedia.org/wiki/Bordier_%26_Cie"]}, {"id": "owner_79_e0", "label": "[…] & Cie\n(banque privée)", "type": "entite", "category": "finance", "info": "Banque privée genevoise (1844). Voir CE-489.", "owner_id": "owner_79"}, {"id": "owner_79_e1", "label": "Famille […]", "type": "entite", "category": "finance", "info": "Famille bancaire historique.", "owner_id": "owner_79"}, {"id": "owner_80", "label": "16:5996", "type": "proprietaire", "category": "finance", "sector": "finance", "description": "Parcelle riveraine de 1'837 m² à Collonge-Bellerive. Membre d'une famille bancaire genevoise historique. Voir aussi parcelles 19:489 et 16:9523.", "parcelles": [{"id": "CB-5996", "commune": "Collonge-Bellerive", "parcelle": "5996", "surface": 1837, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=5996"}], "parcelles_str": "Collonge-Bellerive 5996", "total_surface": 1837, "n_parcelles": 1, "sources_urls": ["https://francoispilet.net/nouvelle-inculpation-dans-laffaire-bordier/", "https://fr.wikipedia.org/wiki/Bordier_%26_Cie"]}, {"id": "owner_80_e0", "label": "[…] & Cie", "type": "entite", "category": "finance", "info": "Banque privée genevoise.", "owner_id": "owner_80"}, {"id": "owner_81", "label": "2:4869", "type": "proprietaire", "category": "opaque", "sector": "societe-ecran", "description": "Parcelle riveraine de 3'713 m² à Anières. Société immobilière au registre genevois (siège à Gy). Profil opaque, à investiguer.", "parcelles": [{"id": "AN-4869", "commune": "Anières", "parcelle": "4869", "surface": 3713, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=2&parcelle=4869"}], "parcelles_str": "Anières 4869", "total_surface": 3713, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_81_e0", "label": "ID3 H SA (Gy)", "type": "entite", "category": "opaque", "info": "Société immobilière au registre.", "owner_id": "owner_81"}, {"id": "owner_82", "label": "16:5025", "type": "proprietaire", "category": "institutionnel", "sector": "institutionnel", "description": "Parcelle riveraine de 26'628 m² à Collonge-Bellerive. Parcelle communale (26 628 m²).", "parcelles": [{"id": "CB-5025", "commune": "Collonge-Bellerive", "parcelle": "5025", "surface": 26628, "lien_rf": "https://ge.ch/terextraitfoncier/rapport.aspx?commune=16&parcelle=5025"}], "parcelles_str": "Collonge-Bellerive 5025", "total_surface": 26628, "n_parcelles": 1, "sources_urls": []}, {"id": "owner_82_e0", "label": "Commune de\nCollonge-Bellerive", "type": "entite", "category": "institutionnel", "info": "Propriétaire communal.", "owner_id": "owner_82"}, {"id": "hub_mpc", "label": "Ministère Public\nde la Confédération\n(MPC)", "type": "institution", "category": "institutionnel", "info": "Procédures judiciaires fédérales touchant plusieurs propriétaires riverains ([…], Lombard Odier, etc.)."}, {"id": "hub_icij", "label": "ICIJ\n(Consortium\ninvestigation)", "type": "institution", "category": "institutionnel", "info": "International Consortium of Investigative Journalists. Réseau mondial de journalistes ayant publié les grandes fuites de documents offshore : Offshore Leaks (2013), Panama Papers (2016), Paradise Papers (2017), Pandora Papers (2021)."}, {"id": "hub_icij_offshore", "label": "Offshore Leaks\n(ICIJ, 2013)", "type": "institution", "category": "institutionnel", "info": "Fuite ICIJ de 2013 sur 130 000 entités offshore aux îles Vierges britanniques."}, {"id": "hub_icij_panama", "label": "Panama Papers\n(ICIJ, 2016)", "type": "institution", "category": "institutionnel", "info": "Fuite ICIJ de 2016 sur les documents du cabinet panaméen Mossack Fonseca."}, {"id": "hub_icij_pandora", "label": "Pandora Papers\n(ICIJ, 2021)", "type": "institution", "category": "institutionnel", "info": "Fuite ICIJ de 2021 sur 14 cabinets offshore et les structures de personnalités politiques et économiques."}, {"id": "hub_wef", "label": "World Economic\nForum (Davos)", "type": "institution", "category": "institutionnel", "info": "Forum économique mondial de Davos. Profile et rassemble les élites économiques globales."}, {"id": "hub_bilan300", "label": "Bilan — 300 plus\ngrandes fortunes\nde Suisse", "type": "institution", "category": "institutionnel", "info": "Classement annuel des plus grandes fortunes domiciliées en Suisse, publié par le magazine économique Bilan."}, {"id": "hub_le_rosey", "label": "Institut Le Rosey\n(Rolle)", "type": "entite", "category": "institutionnel", "info": "École privée internationale (Rolle, Vaud), souvent désignée comme la plus chère du monde. Lieu de scolarisation des enfants des grandes fortunes mondiales."}, {"id": "hub_banques_priv", "label": "Banques privées\ngenevoises\n(cluster)", "type": "institution", "category": "institutionnel", "info": "Cluster des banques privées genevoises traditionnelles : Pictet (1805), Lombard Odier (1796), Bordier (1844), Mirabaud (1819), UBP, Bonna, Hentsch. Plusieurs sont impliquées dans des procédures du MPC et des leaks ICIJ."}, {"id": "hub_oligarques_post_sov", "label": "Sphère\noligarques\npost-soviétiques", "type": "institution", "category": "institutionnel", "info": "Cluster d'oligarques originaires de l'ex-URSS (Russie, Ukraine, Kazakhstan, Azerbaïdjan), souvent liés aux secteurs des matières premières (pétrole, gaz, métaux). Plusieurs propriétés riveraines documentées sur la rive genevoise."}, {"id": "hub_sphere_parfums", "label": "Cluster\nindustrie-parfums\n(Genthod)", "type": "institution", "category": "institutionnel", "info": "Concentration unique au monde de parcelles riveraines détenues par les héritiers d'un grand groupe de parfums et arômes (cluster à Genthod, ~10 propriétaires apparentés, surface totale > 150 000 m²)."}], "links": [{"source": "owner_0", "target": "owner_0_e0", "label": "co-fondateur"}, {"source": "owner_0", "target": "owner_0_e1", "label": "co-fondateur"}, {"source": "owner_0", "target": "hub_wef", "label": "profilé"}, {"source": "owner_0_e1", "target": "owner_0_e3", "label": "lié à"}, {"source": "owner_0", "target": "hub_bilan300", "label": "classé"}, {"source": "owner_0", "target": "owner_0_e5", "label": "épouse fondatrice"}, {"source": "owner_0", "target": "owner_0_e6", "label": "lancée à Genève"}, {"source": "owner_0_e6", "target": "owner_0_e7", "label": "écosystème lié"}, {"source": "owner_0", "target": "owner_0_e8", "label": "cité par OCCRP"}, {"source": "owner_1", "target": "owner_1_e0", "label": "directeur"}, {"source": "owner_1_e0", "target": "owner_1_e1", "label": "mis en cause"}, {"source": "owner_1_e0", "target": "owner_1_e2", "label": "mis en cause"}, {"source": "owner_1_e0", "target": "owner_1_e3", "label": "flux documentés"}, {"source": "owner_1_e0", "target": "owner_1_e4", "label": "certifié par"}, {"source": "owner_1_e1", "target": "owner_1_e5", "label": "enquête"}, {"source": "owner_1_e3", "target": "owner_1_e6", "label": "enquête"}, {"source": "owner_2", "target": "owner_2_e0", "label": "sœur de (présumé)"}, {"source": "owner_2", "target": "owner_2_e1", "label": "plainte rejetée"}, {"source": "owner_2_e1", "target": "owner_2_e2", "label": "cité dans"}, {"source": "owner_2_e0", "target": "owner_2_e3", "label": "documenté dans"}, {"source": "owner_2_e0", "target": "owner_2_e4", "label": "documenté dans"}, {"source": "owner_3", "target": "owner_3_e0", "label": "animateur"}, {"source": "owner_3", "target": "owner_3_e1", "label": "fondateur"}, {"source": "owner_3", "target": "owner_3_e2", "label": "objet de"}, {"source": "owner_4", "target": "owner_4_e0", "label": "CEO"}, {"source": "owner_4", "target": "owner_4_e1", "label": "fils de"}, {"source": "owner_4_e0", "target": "owner_4_e2", "label": "impliquée dans"}, {"source": "owner_4", "target": "owner_4_e3", "label": "famille"}, {"source": "owner_5", "target": "owner_5_e0", "label": "membre"}, {"source": "owner_5", "target": "owner_5_e1", "label": "cité dans"}, {"source": "owner_6", "target": "owner_6_e0", "label": "propriétaire"}, {"source": "owner_6_e0", "target": "owner_6_e1", "label": "inculpée"}, {"source": "owner_6_e0", "target": "owner_6_e3", "label": "enquête"}, {"source": "owner_6_e1", "target": "hub_mpc", "label": "par"}, {"source": "owner_7", "target": "owner_7_e0", "label": "membre"}, {"source": "owner_7", "target": "owner_7_e1", "label": "CEO"}, {"source": "owner_7", "target": "owner_7_e2", "label": "lié à"}, {"source": "owner_7_e0", "target": "owner_7_e3", "label": "cousin cité"}, {"source": "owner_7_e0", "target": "owner_7_e4", "label": "allégations"}, {"source": "owner_7_e0", "target": "owner_7_e5", "label": "plainte"}, {"source": "owner_8", "target": "owner_8_e0", "label": "lien supposé"}, {"source": "owner_8", "target": "owner_8_e1", "label": "lien supposé"}, {"source": "owner_9", "target": "owner_9_e0", "label": "identité"}, {"source": "owner_9", "target": "owner_9_e1", "label": "documenté"}, {"source": "owner_10", "target": "owner_10_e0", "label": "ex-président"}, {"source": "owner_10", "target": "owner_10_e1", "label": "associé"}, {"source": "owner_10_e1", "target": "owner_10_e3", "label": "citée"}, {"source": "owner_10_e1", "target": "owner_10_e4", "label": "impliquée"}, {"source": "owner_11", "target": "owner_11_e1", "label": "documenté"}, {"source": "owner_11", "target": "owner_11_e2", "label": "lié à"}, {"source": "owner_12", "target": "owner_12_e0", "label": "associé senior"}, {"source": "owner_12_e0", "target": "owner_12_e1", "label": "condamnée"}, {"source": "owner_12_e0", "target": "owner_12_e2", "label": "poursuivie"}, {"source": "owner_12_e0", "target": "owner_12_e3", "label": "perquisitionnée"}, {"source": "owner_12_e0", "target": "owner_12_e4", "label": "condamnée"}, {"source": "owner_13", "target": "owner_13_e0", "label": "président"}, {"source": "owner_13", "target": "owner_13_e1", "label": "membre"}, {"source": "owner_13", "target": "owner_13_e2", "label": "propriétaire"}, {"source": "owner_13_e0", "target": "owner_13_e3", "label": "visée par"}, {"source": "owner_14", "target": "owner_14_e0", "label": "liée à"}, {"source": "owner_14_e0", "target": "owner_14_e1", "label": "fondé par"}, {"source": "owner_14_e1", "target": "owner_14_e2", "label": "mis en examen"}, {"source": "owner_14_e0", "target": "owner_14_e3", "label": "infiltrée"}, {"source": "owner_14_e0", "target": "owner_14_e4", "label": "documenté"}, {"source": "owner_15", "target": "owner_15_e0", "label": "lié à"}, {"source": "owner_16", "target": "owner_16_e0", "label": "lié à"}, {"source": "owner_16", "target": "owner_16_e1", "label": "lié à"}, {"source": "owner_17", "target": "owner_17_e0", "label": "identité"}, {"source": "owner_17", "target": "owner_17_e1", "label": "phénomène documenté"}, {"source": "owner_18", "target": "owner_18_e0", "label": "fille de"}, {"source": "owner_18", "target": "owner_18_e1", "label": "épouse de"}, {"source": "owner_18_e1", "target": "owner_18_e2", "label": "directeur"}, {"source": "owner_18", "target": "owner_18_e3", "label": "citée"}, {"source": "owner_18", "target": "owner_18_e4", "label": "enquête"}, {"source": "owner_18_e0", "target": "owner_18_e5", "label": "documenté"}, {"source": "owner_18", "target": "owner_18_e6", "label": "profilée"}, {"source": "owner_19", "target": "owner_19_e0", "label": "membre"}, {"source": "owner_19_e0", "target": "owner_19_e1", "label": "documenté"}, {"source": "owner_19", "target": "owner_19_e2", "label": "lié"}, {"source": "owner_19", "target": "owner_19_e3", "label": "mandats"}, {"source": "owner_20", "target": "owner_20_e0", "label": "frère de"}, {"source": "owner_20_e0", "target": "owner_20_e1", "label": "co-fondateur"}, {"source": "owner_20", "target": "owner_20_e2", "label": "condamné"}, {"source": "owner_20", "target": "owner_20_e3", "label": "poursuivi"}, {"source": "owner_20", "target": "hub_bilan300", "label": "classé"}, {"source": "owner_21", "target": "owner_21_e0", "label": "lié au"}, {"source": "owner_21_e0", "target": "owner_21_e1", "label": "condamné"}, {"source": "owner_21", "target": "owner_21_e2", "label": "associé à"}, {"source": "owner_21", "target": "owner_21_e3", "label": "documenté"}, {"source": "owner_22", "target": "owner_22_e0", "label": "liée à"}, {"source": "owner_22", "target": "owner_22_e1", "label": "soutien"}, {"source": "owner_22", "target": "owner_22_e2", "label": "comité"}, {"source": "owner_23", "target": "owner_23_e0", "label": "identité"}, {"source": "owner_23", "target": "owner_23_e1", "label": "documenté"}, {"source": "owner_24", "target": "owner_24_e0", "label": "liée à"}, {"source": "owner_25", "target": "owner_25_e0", "label": "lié au"}, {"source": "owner_25", "target": "owner_25_e1", "label": "mandats"}, {"source": "owner_26", "target": "owner_26_e0", "label": "site classé"}, {"source": "owner_27", "target": "owner_27_e1", "label": "suivi"}, {"source": "owner_28", "target": "owner_28_e0", "label": "identité"}, {"source": "owner_29", "target": "owner_29_e0", "label": "fonction"}, {"source": "owner_30", "target": "owner_30_e0", "label": "veuve de"}, {"source": "owner_30_e0", "target": "owner_30_e1", "label": "fondateur"}, {"source": "owner_30_e1", "target": "owner_30_e2", "label": "visée"}, {"source": "owner_30_e1", "target": "owner_30_e3", "label": "visée"}, {"source": "owner_31", "target": "owner_31_e0", "label": "liée à"}, {"source": "owner_32", "target": "owner_32_e0", "label": "ex-patron"}, {"source": "owner_32_e0", "target": "owner_32_e1", "label": "jugée pour"}, {"source": "owner_32", "target": "owner_32_e2", "label": "professeur"}, {"source": "owner_32", "target": "owner_32_e3", "label": "ex-directeur"}, {"source": "owner_32_e3", "target": "owner_32_e4", "label": "condamné"}, {"source": "owner_33", "target": "owner_33_e0", "label": "identité"}, {"source": "owner_33", "target": "owner_33_e1", "label": "liens"}, {"source": "owner_34", "target": "owner_34_e0", "label": "associé"}, {"source": "owner_34_e0", "target": "owner_34_e1", "label": "inculpée"}, {"source": "owner_34_e0", "target": "owner_34_e2", "label": "impliquée"}, {"source": "owner_34_e0", "target": "owner_34_e3", "label": "impliquée"}, {"source": "owner_36", "target": "owner_36_e0", "label": "liée à"}, {"source": "owner_36_e0", "target": "owner_36_e1", "label": "membre"}, {"source": "owner_36_e1", "target": "owner_36_e2", "label": "séjourne"}, {"source": "owner_38", "target": "owner_38_e0", "label": "famille"}, {"source": "owner_38_e0", "target": "owner_38_e1", "label": "fusion"}, {"source": "owner_38", "target": "owner_38_e2", "label": "historique"}, {"source": "owner_38_e0", "target": "owner_38_e3", "label": "enquête"}, {"source": "owner_38", "target": "owner_38_e4", "label": "famille"}, {"source": "owner_39", "target": "owner_39_e0", "label": "famille"}, {"source": "owner_40", "target": "owner_40_e0", "label": "famille"}, {"source": "owner_41", "target": "owner_41_e0", "label": "décédée"}, {"source": "owner_42", "target": "owner_42_e0", "label": "lié à"}, {"source": "owner_42", "target": "owner_42_e1", "label": "mandat"}, {"source": "owner_43", "target": "owner_43_e0", "label": "famille"}, {"source": "owner_44", "target": "owner_44_e0", "label": "héritière"}, {"source": "owner_44_e0", "target": "owner_44_e1", "label": "fusion"}, {"source": "owner_44_e0", "target": "owner_44_e2", "label": "documenté"}, {"source": "owner_44_e0", "target": "owner_44_e3", "label": "enquête"}, {"source": "owner_44_e0", "target": "owner_44_e4", "label": "historique"}, {"source": "owner_45", "target": "owner_45_e0", "label": "site classé"}, {"source": "owner_45", "target": "owner_45_e1", "label": "famille"}, {"source": "owner_46", "target": "owner_46_e0", "label": "famille"}, {"source": "owner_47", "target": "owner_47_e0", "label": "famille"}, {"source": "owner_48", "target": "owner_48_e0", "label": "fondateur"}, {"source": "owner_48", "target": "owner_48_e1", "label": "propriétaire"}, {"source": "owner_48", "target": "owner_48_e2", "label": "voisinage"}, {"source": "owner_48", "target": "owner_48_e3", "label": "documenté"}, {"source": "owner_49", "target": "owner_49_e0", "label": "famille"}, {"source": "owner_49_e0", "target": "owner_49_e1", "label": "propriétaire"}, {"source": "owner_49", "target": "owner_49_e3", "label": "documenté"}, {"source": "owner_50", "target": "owner_50_e0", "label": "lié à"}, {"source": "owner_50", "target": "owner_50_e1", "label": "lié à"}, {"source": "owner_50", "target": "owner_50_e2", "label": "visé"}, {"source": "owner_51", "target": "owner_51_e0", "label": "lié à"}, {"source": "owner_52", "target": "owner_52_e0", "label": "site"}, {"source": "owner_52", "target": "owner_52_e1", "label": "institution"}, {"source": "owner_53", "target": "owner_53_e0", "label": "site"}, {"source": "owner_53", "target": "owner_53_e1", "label": "institution"}, {"source": "owner_54", "target": "owner_54_e0", "label": "ex-CEO"}, {"source": "owner_54", "target": "owner_54_e1", "label": "fondateur"}, {"source": "owner_54", "target": "owner_54_e2", "label": "fondateur"}, {"source": "owner_54", "target": "owner_54_e3", "label": "donateur"}, {"source": "owner_54", "target": "hub_wef", "label": "profilé"}, {"source": "owner_55", "target": "owner_55_e0", "label": "lien hypothétique"}, {"source": "owner_56", "target": "owner_56_e0", "label": "lié à"}, {"source": "owner_56_e0", "target": "owner_56_e1", "label": "inculpée"}, {"source": "owner_56", "target": "owner_56_e2", "label": "site"}, {"source": "owner_56", "target": "owner_56_e3", "label": "lié à"}, {"source": "owner_57", "target": "owner_57_e0", "label": "membre"}, {"source": "owner_57", "target": "owner_57_e1", "label": "frère de"}, {"source": "owner_57", "target": "owner_57_e2", "label": "documenté"}, {"source": "owner_57", "target": "owner_57_e3", "label": "lié"}, {"source": "owner_58", "target": "owner_58_e0", "label": "site"}, {"source": "owner_58", "target": "owner_58_e1", "label": "institution"}, {"source": "owner_58", "target": "owner_58_e1", "label": "État"}, {"source": "owner_59", "target": "owner_59_e0", "label": "lien hypothétique"}, {"source": "owner_59_e0", "target": "hub_bilan300", "label": "documenté"}, {"source": "owner_59", "target": "owner_59_e2", "label": "mentionné"}, {"source": "owner_60", "target": "owner_60_e0", "label": "identité"}, {"source": "owner_60", "target": "owner_60_e1", "label": "lié à"}, {"source": "owner_60_e1", "target": "owner_60_e2", "label": "frère mis en cause"}, {"source": "owner_60", "target": "owner_60_e3", "label": "site"}, {"source": "owner_61", "target": "owner_61_e0", "label": "née de"}, {"source": "owner_61", "target": "owner_61_e1", "label": "épouse de"}, {"source": "owner_61_e1", "target": "owner_61_e2", "label": "dirigeant historique"}, {"source": "owner_61_e0", "target": "owner_61_e3", "label": "documenté"}, {"source": "owner_61", "target": "owner_61_e4", "label": "site"}, {"source": "owner_62", "target": "owner_62_e0", "label": "identité"}, {"source": "owner_62", "target": "owner_62_e1", "label": "lié à"}, {"source": "owner_63", "target": "owner_63_e0", "label": "identité"}, {"source": "owner_63", "target": "owner_63_e1", "label": "lien à vérifier"}, {"source": "owner_64", "target": "owner_64_e0", "label": "identité"}, {"source": "owner_64", "target": "owner_64_e1", "label": "liée à"}, {"source": "owner_64", "target": "owner_64_e2", "label": "lié à"}, {"source": "owner_64_e1", "target": "owner_64_e3", "label": "membre"}, {"source": "owner_65", "target": "owner_65_e0", "label": "fils de"}, {"source": "owner_65", "target": "owner_65_e1", "label": "employé par"}, {"source": "owner_65", "target": "owner_65_e2", "label": "filiale Genève"}, {"source": "owner_65", "target": "hub_le_rosey", "label": "études"}, {"source": "owner_65", "target": "owner_65_e4", "label": "employé père"}, {"source": "owner_65", "target": "owner_65_e5", "label": "documenté"}, {"source": "owner_65", "target": "hub_bilan300", "label": "classé"}, {"source": "owner_66", "target": "owner_66_e0", "label": "propriétaires"}, {"source": "owner_66", "target": "owner_66_e1", "label": "famille"}, {"source": "owner_66", "target": "owner_66_e2", "label": "frère"}, {"source": "owner_66", "target": "owner_66_e3", "label": "frère"}, {"source": "owner_66", "target": "owner_66_e4", "label": "family office"}, {"source": "owner_66", "target": "owner_66_e5", "label": "historique"}, {"source": "owner_66", "target": "owner_66_e6", "label": "vignobles"}, {"source": "owner_66", "target": "owner_66_e7", "label": "classés"}, {"source": "owner_67", "target": "owner_67_e0", "label": "membre"}, {"source": "owner_67", "target": "owner_67_e1", "label": "membre"}, {"source": "owner_67", "target": "owner_67_e2", "label": "marque"}, {"source": "owner_67", "target": "owner_67_e3", "label": "famille"}, {"source": "owner_67", "target": "owner_67_e4", "label": "documenté"}, {"source": "owner_67", "target": "owner_67_e5", "label": "profil"}, {"source": "owner_68", "target": "owner_68_e0", "label": "membre"}, {"source": "owner_68", "target": "owner_68_e1", "label": "famille"}, {"source": "owner_69", "target": "owner_69_e0", "label": "membre"}, {"source": "owner_69", "target": "owner_69_e1", "label": "famille"}, {"source": "owner_70", "target": "owner_70_e0", "label": "lié à"}, {"source": "owner_70", "target": "owner_70_e1", "label": "membre"}, {"source": "owner_71", "target": "owner_71_e0", "label": "membre"}, {"source": "owner_71", "target": "owner_71_e1", "label": "famille"}, {"source": "owner_72", "target": "owner_72_e0", "label": "lié"}, {"source": "owner_72", "target": "owner_72_e1", "label": "membre"}, {"source": "owner_73", "target": "owner_73_e0", "label": "ex-employé"}, {"source": "owner_73", "target": "owner_73_e1", "label": "fondateur Genève"}, {"source": "owner_73", "target": "owner_73_e2", "label": "fondateur"}, {"source": "owner_73", "target": "owner_73_e3", "label": "fondateur"}, {"source": "owner_73_e2", "target": "owner_73_e4", "label": "visée 2025"}, {"source": "owner_73", "target": "owner_73_e5", "label": "représentant"}, {"source": "owner_73", "target": "owner_73_e6", "label": "documenté"}, {"source": "owner_74", "target": "owner_74_e0", "label": "ex-président"}, {"source": "owner_74", "target": "owner_74_e1", "label": "vice-président"}, {"source": "owner_74", "target": "owner_74_e2", "label": "cofondateur"}, {"source": "owner_74", "target": "owner_74_e3", "label": "vice-président"}, {"source": "owner_74", "target": "owner_74_e4", "label": "cofondateur"}, {"source": "owner_74_e4", "target": "owner_74_e5", "label": "mis en cause"}, {"source": "owner_74", "target": "owner_74_e6", "label": "documenté"}, {"source": "owner_75", "target": "owner_75_e0", "label": "famille"}, {"source": "owner_75", "target": "owner_75_e1", "label": "co-propriétaire"}, {"source": "owner_76", "target": "owner_76_e0", "label": "mission"}, {"source": "owner_76", "target": "owner_76_e1", "label": "État"}, {"source": "owner_77", "target": "owner_77_e0", "label": "État"}, {"source": "owner_78", "target": "owner_78_e0", "label": "État"}, {"source": "owner_79", "target": "owner_79_e0", "label": "famille"}, {"source": "owner_79", "target": "owner_79_e1", "label": "membre"}, {"source": "owner_80", "target": "owner_80_e0", "label": "famille"}, {"source": "owner_81", "target": "owner_81_e0", "label": "identité"}, {"source": "owner_82", "target": "owner_82_e0", "label": "commune"}, {"source": "owner_30", "target": "hub_mpc", "label": "visé par"}, {"source": "owner_6", "target": "hub_mpc", "label": "visé par"}, {"source": "owner_12", "target": "hub_mpc", "label": "visé par"}, {"source": "hub_icij", "target": "hub_icij_offshore", "label": "a publié"}, {"source": "hub_icij", "target": "hub_icij_panama", "label": "a publié"}, {"source": "hub_icij", "target": "hub_icij_pandora", "label": "a publié"}, {"source": "owner_0", "target": "hub_icij_panama", "label": "cité dans"}, {"source": "owner_4", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_6", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_6", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_7", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_10", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_10", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_11", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_11", "target": "hub_icij_panama", "label": "cité dans"}, {"source": "owner_12", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_14", "target": "hub_bilan300", "label": "classé par"}, {"source": "owner_18", "target": "hub_icij_pandora", "label": "citée dans"}, {"source": "owner_20", "target": "hub_oligarques_post_sov", "label": "fait partie de"}, {"source": "owner_27", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_31", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_34", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_34", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_35", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_38", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_39", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_40", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_42", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_43", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_44", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_45", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_46", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_47", "target": "hub_sphere_parfums", "label": "membre du"}, {"source": "owner_49", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_51", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_56", "target": "hub_mpc", "label": "visé par"}, {"source": "owner_59", "target": "hub_bilan300", "label": "classé par"}, {"source": "owner_62", "target": "hub_icij_offshore", "label": "cité dans"}, {"source": "owner_65", "target": "hub_oligarques_post_sov", "label": "fait partie de"}, {"source": "owner_66", "target": "hub_bilan300", "label": "classé par"}, {"source": "owner_68", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_69", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_70", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_71", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_72", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_73", "target": "hub_oligarques_post_sov", "label": "fait partie de"}, {"source": "owner_74", "target": "hub_oligarques_post_sov", "label": "fait partie de"}, {"source": "owner_79", "target": "hub_banques_priv", "label": "fait partie de"}, {"source": "owner_80", "target": "hub_banques_priv", "label": "fait partie de"}]};
+
+// Couleurs par type
+const colors = {
+  proprietaire: { stroke: "#c8b89a", fill: "rgba(200,184,154,0.06)" },
+  entite:       { stroke: "#7a9cbf", fill: "rgba(122,156,191,0.06)" },
+  affaire:      { stroke: "#bf7a7a", fill: "rgba(191,122,122,0.06)" },
+  personne:     { stroke: "#7abf9c", fill: "rgba(122,191,156,0.06)" },
+  source:       { stroke: "#888888", fill: "rgba(136,136,136,0.04)" },
+  institution:  { stroke: "#a87aff", fill: "rgba(168,122,255,0.06)" },
+};
+
+// Stats
+document.getElementById('stats').textContent =
+  `${DATA.nodes.filter(n=>n.type==='proprietaire').length} propriétaires · ${DATA.nodes.length} nœuds · ${DATA.links.length} liens`;
+
+const W = window.innerWidth, H = window.innerHeight;
+
+const svg = d3.select("#canvas").attr("width", W).attr("height", H);
+const g = svg.append("g");
+
+// Zoom (le zoom reste, même si la disposition est statique)
+const zoom = d3.zoom()
+  .scaleExtent([0.15, 4])
+  .on("zoom", e => g.attr("transform", e.transform));
+svg.call(zoom);
+
+// ════════════════════════════════════════════════════════════════════
+// LAYOUT LOMBARDI STATIQUE
+// ════════════════════════════════════════════════════════════════════
+// Inspiré des "narrative structures" de Mark Lombardi : composition
+// géométrique pensée, cercles concentriques, arcs propres, lisibilité
+// avant tout. AUCUNE simulation physique.
+
+// ════════════════════════════════════════════════════════════════════
+// LAYOUT INSPIRÉ DE LOMBARDI
+// ════════════════════════════════════════════════════════════════════
+// Composition horizontale en strates, plusieurs centres, grandes ellipses
+// qui se chevauchent, espace blanc généreux, arcs qui traversent.
+
+// Canvas large et bas (ratio paysage 16:9 comme les pages de Lombardi)
+const CANVAS_W = 6400;
+const CANVAS_H = 3800;
+
+(function lombardiLayout() {
+  const cx = CANVAS_W / 2;
+  const cy = CANVAS_H / 2;
+
+  // ── Regrouper et trier ──
+  const proprietaires = DATA.nodes.filter(n => n.type === 'proprietaire');
+  const byCategory = {};
+  proprietaires.forEach(p => {
+    const cat = p.category || 'autre';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(p);
+  });
+
+  const entityCount = {};
+  proprietaires.forEach(p => {
+    entityCount[p.id] = DATA.nodes.filter(n => n.owner_id === p.id).length;
+  });
+  Object.values(byCategory).forEach(list => {
+    list.sort((a, b) => (entityCount[b.id] || 0) - (entityCount[a.id] || 0));
+  });
+
+  // ── Disposition en strates horizontales (5 bandes) ──
+  // Lombardi utilisait souvent ces strates pour séparer thématiques/temporalités.
+  // Chaque strate est une grande ellipse étirée horizontalement.
+  //
+  //   STRATE 1 (haut)    : finance + opaque + héritage  (le pouvoir économique établi)
+  //   STRATE 2           : oligarchie + extraction      (les ressources géopolitiques)
+  //   STRATE 3 (centre)  : INSTITUTIONS communes        (MPC, ICIJ — le cœur)
+  //   STRATE 4           : maritime + industrie         (la production matérielle)
+  //   STRATE 5 (bas)     : royaute + crime + autre      (les marges et exceptions)
+
+  const strates = [
+    { y_offset: -700, cats: ['finance', 'opaque', 'heritage'] },
+    { y_offset: -350, cats: ['oligarchie', 'extraction'] },
+    { y_offset: 0,    cats: ['INSTITUTIONS_CENTER'] },
+    { y_offset: 350,  cats: ['maritime', 'industrie'] },
+    { y_offset: 700,  cats: ['royaute', 'crime', 'autre', 'institutionnel'] },
+  ];
+
+  // Largeur utile pour chaque strate
+  const strateWidth = CANVAS_W * 0.85;
+  const strateLeft = (CANVAS_W - strateWidth) / 2;
+
+  strates.forEach(strate => {
+    const sy = cy + strate.y_offset;
+
+    if (strate.cats[0] === 'INSTITUTIONS_CENTER') {
+      // Strate centrale : institutions transversales positionnées par zone d'influence
+      const hubPositions = {
+        'hub_banques_priv':         { x: 0.18, y: -0.45 },
+        'hub_mpc':                  { x: 0.32, y: -0.20 },
+        'hub_icij':                 { x: 0.50, y: -0.10 },
+        'hub_icij_offshore':        { x: 0.40, y:  0.08 },
+        'hub_icij_panama':          { x: 0.50, y:  0.15 },
+        'hub_icij_pandora':         { x: 0.60, y:  0.08 },
+        'hub_oligarques_post_sov':  { x: 0.80, y: -0.30 },
+        'hub_sphere_parfums':       { x: 0.88, y:  0.10 },
+        'hub_wef':                  { x: 0.25, y:  0.35 },
+        'hub_bilan300':             { x: 0.50, y:  0.50 },
+        'hub_le_rosey':             { x: 0.75, y:  0.35 },
+      };
+      const insts = DATA.nodes.filter(n => n.type === 'institution');
+      insts.forEach((inst, i) => {
+        const pos = hubPositions[inst.id];
+        if (pos) {
+          inst.x = strateLeft + strateWidth * pos.x;
+          inst.y = sy + pos.y * 350;
+        } else {
+          inst.x = strateLeft + strateWidth * (0.3 + i * 0.15);
+          inst.y = sy;
+        }
+      });
+      return;
+    }
+
+    // Compter les owners dans cette strate
+    const cats = strate.cats.filter(c => byCategory[c] && byCategory[c].length > 0);
+    if (cats.length === 0) return;
+
+    const totalOwners = cats.reduce((s, c) => s + byCategory[c].length, 0);
+    if (totalOwners === 0) return;
+
+    // Réserver une largeur pour chaque catégorie proportionnelle au nb d'owners
+    let curX = strateLeft;
+    const gap = 80; // espace entre catégories
+
+    // Calculer les largeurs
+    const widths = cats.map(c => {
+      const n = byCategory[c].length;
+      return Math.max(280, (strateWidth - (cats.length - 1) * gap) * n / totalOwners);
+    });
+    const totalW = widths.reduce((a,b) => a+b, 0) + (cats.length - 1) * gap;
+    const startX = (CANVAS_W - totalW) / 2;
+    curX = startX;
+
+    cats.forEach((cat, ci) => {
+      const owners = byCategory[cat];
+      const catW = widths[ci];
+      const catCx = curX + catW / 2;
+
+      // Disposer les owners de cette catégorie sur une ELLIPSE centrée sur catCx,sy
+      // Ellipse étirée horizontalement
+      const ellipseRX = catW / 2 - 30;
+      const ellipseRY = Math.min(180, 60 + owners.length * 8);
+
+      owners.forEach((owner, oi) => {
+        // Position sur l'ellipse — angle distribué
+        // Lombardi : pas régulier, légèrement irrégulier
+        const t = owners.length === 1 ? 0 : oi / owners.length;
+        const angle = t * 2 * Math.PI - Math.PI / 2;
+
+        // Variation organique : un cercle sur deux à l'intérieur, l'autre à l'extérieur
+        const inOut = oi % 2 === 0 ? 1.0 : 0.65;
+        owner.x = catCx + ellipseRX * Math.cos(angle) * inOut;
+        owner.y = sy + ellipseRY * Math.sin(angle) * inOut;
+      });
+
+      curX += catW + gap;
+    });
+  });
+
+  // ── Disposer les entités/satellites autour de leurs propriétaires ──
+  // Lombardi : les "filiales" sont disposées sur des arcs concentriques
+  // autour de l'entité centrale, avec des longueurs variables
+  proprietaires.forEach(owner => {
+    const satellites = DATA.nodes.filter(n => n.owner_id === owner.id);
+    if (satellites.length === 0) return;
+
+    // Direction préférentielle : vers le bord du canvas le plus proche
+    // pour que les satellites n'aillent pas vers le centre du graphe
+    const distLeft = owner.x;
+    const distRight = CANVAS_W - owner.x;
+    const distTop = owner.y;
+    const distBottom = CANVAS_H - owner.y;
+    const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+    let preferredAngle;
+    if (minDist === distTop) preferredAngle = -Math.PI / 2;
+    else if (minDist === distBottom) preferredAngle = Math.PI / 2;
+    else if (minDist === distLeft) preferredAngle = Math.PI;
+    else preferredAngle = 0;
+
+    // Mais on s'assure aussi que les satellites pointent vers l'extérieur
+    // de la strate (haut ou bas selon la position dans la strate)
+    const cy_strate = owner.y; // approximation
+    const isUpperHalf = owner.y < cy;
+    preferredAngle = isUpperHalf ? -Math.PI / 2 : Math.PI / 2;
+
+    // Si le propriétaire est sur les bords, dévier vers le côté
+    if (owner.x < CANVAS_W * 0.2) preferredAngle = isUpperHalf ? -Math.PI * 0.7 : Math.PI * 0.7;
+    if (owner.x > CANVAS_W * 0.8) preferredAngle = isUpperHalf ? -Math.PI * 0.3 : Math.PI * 0.3;
+
+    // Arc large pour les satellites
+    const arcSpan = Math.min(Math.PI * 0.85, 0.7 + satellites.length * 0.15);
+    const startA = preferredAngle - arcSpan / 2;
+    const endA = preferredAngle + arcSpan / 2;
+
+    // Plusieurs couches concentriques si nb satellites élevé
+    const satsPerLayer = Math.max(4, Math.ceil(Math.sqrt(satellites.length) * 1.5));
+
+    satellites.forEach((sat, si) => {
+      const layer = Math.floor(si / satsPerLayer);
+      const posInLayer = si % satsPerLayer;
+      const satsInThisLayer = Math.min(satsPerLayer, satellites.length - layer * satsPerLayer);
+
+      let angle;
+      if (satsInThisLayer === 1) angle = (startA + endA) / 2;
+      else angle = startA + (posInLayer / (satsInThisLayer - 1)) * (endA - startA);
+
+      const baseDist = 130 + layer * 110;
+      // Variation organique
+      const dist = baseDist + ((si % 3) - 1) * 12;
+      sat.x = owner.x + dist * Math.cos(angle);
+      sat.y = owner.y + dist * Math.sin(angle);
+    });
+  });
+
+  // ── Anti-collision finale (préserver la structure des strates) ──
+  function nodeRadius(n) {
+    if (n.type === 'proprietaire') return Math.min(42, 24 + (n.n_parcelles||1) * 3.5);
+    if (n.type === 'institution') return 36;
+    if (n.type === 'affaire') return 22;
+    return 18;
+  }
+
+  const PADDING = 32;
+  for (let pass = 0; pass < 50; pass++) {
+    let collisions = 0;
+    for (let i = 0; i < DATA.nodes.length; i++) {
+      for (let j = i + 1; j < DATA.nodes.length; j++) {
+        const a = DATA.nodes[i], b = DATA.nodes[j];
+        const minDist = nodeRadius(a) + nodeRadius(b) + PADDING;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > 0 && dist < minDist) {
+          const overlap = (minDist - dist) / 2;
+          const angle = Math.atan2(dy, dx);
+          // Les propriétaires bougent peu (préservent les strates)
+          // Les institutions ne bougent pas (centre fixe)
+          const aMobility = a.type === 'institution' ? 0 :
+                            a.type === 'proprietaire' ? 0.2 : 1.0;
+          const bMobility = b.type === 'institution' ? 0 :
+                            b.type === 'proprietaire' ? 0.2 : 1.0;
+          const totalMob = aMobility + bMobility;
+          if (totalMob > 0) {
+            a.x -= Math.cos(angle) * overlap * (aMobility / totalMob) * 2;
+            a.y -= Math.sin(angle) * overlap * (aMobility / totalMob) * 2;
+            b.x += Math.cos(angle) * overlap * (bMobility / totalMob) * 2;
+            b.y += Math.sin(angle) * overlap * (bMobility / totalMob) * 2;
+            collisions++;
+          }
+        }
+      }
+    }
+    if (collisions === 0) break;
+  }
+})();
+
+// ── Vue initiale : montrer tout ──
+const initialScale = Math.min(W / CANVAS_W, H / CANVAS_H) * 0.95;
+const initialX = (W - CANVAS_W * initialScale) / 2;
+const initialY = (H - CANVAS_H * initialScale) / 2;
+const initialTransform = d3.zoomIdentity
+  .translate(initialX, initialY)
+  .scale(initialScale);
+svg.call(zoom.transform, initialTransform);
+
+// ════════════════════════════════════════════════════════════════════
+// RENDU SVG
+// ════════════════════════════════════════════════════════════════════
+
+// Liens : courbes de Bézier propres entre les nœuds
+const link = g.append("g").selectAll("path")
+  .data(DATA.links).join("path")
+  .attr("class", "link")
+  .attr("stroke", d => {
+    const t = (typeof d.target === 'object' ? d.target : DATA.nodes.find(n=>n.id===d.target));
+    return colors[t?.type]?.stroke || '#777';
+  })
+  .attr("d", l => {
+    const s = typeof l.source === 'object' ? l.source : DATA.nodes.find(n=>n.id===l.source);
+    const t = typeof l.target === 'object' ? l.target : DATA.nodes.find(n=>n.id===l.target);
+    if (!s || !t) return "";
+    // Stocker pour réutilisation
+    l._s = s; l._t = t;
+    const dx = t.x - s.x;
+    const dy = t.y - s.y;
+    const dr = Math.sqrt(dx*dx + dy*dy) * 1.7;
+    return `M${s.x},${s.y}A${dr},${dr} 0 0,1 ${t.x},${t.y}`;
+  });
+
+// Nœuds
+const node = g.append("g").selectAll(".node")
+  .data(DATA.nodes).join("g")
+  .attr("class", "node")
+  .attr("transform", d => `translate(${d.x},${d.y})`)
+  .style("cursor", "pointer")
+  .on("click", (e, d) => { e.stopPropagation(); openPanel(d); highlight(d); });
+
+// Cercles
+node.append("circle")
+  .attr("r", d => {
+    if (d.type === "proprietaire") return Math.min(42, 24 + (d.n_parcelles||1) * 3.5);
+    if (d.type === "institution") return 36;
+    if (d.type === "affaire") return 22;
+    return 18;
+  })
+  .attr("fill", d => colors[d.type]?.fill || "rgba(200,200,200,0.05)")
+  .attr("stroke", d => colors[d.type]?.stroke || "#aaa");
+
+// Labels (tels qu'avant, avec word-wrap)
+node.each(function(d) {
+  const sel = d3.select(this);
+  const radius = d.type === "proprietaire" ? Math.min(42, 24 + (d.n_parcelles||1) * 3.5) :
+                 d.type === "institution" ? 36 :
+                 d.type === "affaire" ? 22 : 18;
+
+  const rawLines = d.label.split("\n");
+  const wrappedLines = [];
+  const maxCharsPerLine = d.type === "proprietaire" ? 18 :
+                          d.type === "institution" ? 18 : 22;
+  rawLines.forEach(line => {
+    if (line.length <= maxCharsPerLine) {
+      wrappedLines.push(line);
+    } else {
+      const words = line.split(" ");
+      let current = "";
+      words.forEach(word => {
+        if ((current + " " + word).trim().length <= maxCharsPerLine) {
+          current = (current + " " + word).trim();
+        } else {
+          if (current) wrappedLines.push(current);
+          current = word;
+        }
+      });
+      if (current) wrappedLines.push(current);
+    }
+  });
+
+  const isInside = d.type === "proprietaire" || d.type === "institution";
+  const fontSize = d.type === "proprietaire" ? 9.5 : (d.type === "institution" ? 9 : 8);
+
+  const text = sel.append("text")
+    .attr("fill", colors[d.type]?.stroke || "#aaa")
+    .style("font-size", fontSize + "px")
+    .style("font-weight", d.type === "proprietaire" ? "600" : "normal")
+    .attr("text-anchor", "middle");
+
+  if (isInside) {
+    const lineHeight = 1.15;
+    const totalHeight = (wrappedLines.length - 1) * fontSize * lineHeight;
+    const startY = -totalHeight / 2 + fontSize * 0.35;
+    wrappedLines.forEach((line, i) => {
+      text.append("tspan")
+        .attr("x", 0)
+        .attr("y", startY + i * fontSize * lineHeight)
+        .text(line);
+    });
+  } else {
+    wrappedLines.forEach((line, i) => {
+      text.append("tspan")
+        .attr("x", 0)
+        .attr("dy", i === 0 ? (radius + fontSize + 4) + "px" : (fontSize * 1.15) + "px")
+        .text(line);
+    });
+  }
+});
+
+// Cacher le loading immédiatement (plus besoin de calcul)
+document.getElementById('loading').classList.add('hidden');
+
+// ════════════════════════════════════════════════════════════════════
+// INTERACTIVITÉ : clic, surbrillance, panneau, recherche, filtres
+// ════════════════════════════════════════════════════════════════════
+
+svg.on("click", () => {
+  resetHighlight();
+  closePanel();
+});
+
+function resetHighlight() {
+  node.classed("dimmed", false);
+  link.classed("dimmed", false).classed("highlighted", false);
+}
+
+function highlight(d) {
+  const connectedIds = new Set([d.id]);
+  DATA.links.forEach(l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    if (sId === d.id) connectedIds.add(tId);
+    if (tId === d.id) connectedIds.add(sId);
+  });
+  if (d.type === 'proprietaire') {
+    DATA.nodes.forEach(n => {
+      if (n.owner_id === d.id) connectedIds.add(n.id);
+    });
+  }
+  if (d.owner_id) {
+    connectedIds.add(d.owner_id);
+    DATA.nodes.forEach(n => {
+      if (n.owner_id === d.owner_id) connectedIds.add(n.id);
+    });
+  }
+
+  node.classed("dimmed", n => !connectedIds.has(n.id));
+  link.classed("dimmed", l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    return !connectedIds.has(sId) || !connectedIds.has(tId);
+  });
+  link.classed("highlighted", l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    return sId === d.id || tId === d.id;
+  });
+}
+
+function openPanel(d) {
+  const typeLabels = {
+    'proprietaire': 'Propriétaire riverain',
+    'entite': 'Entité liée',
+    'affaire': 'Affaire documentée',
+    'personne': 'Personne liée',
+    'source': 'Source documentaire',
+    'institution': 'Institution commune',
+  };
+  document.getElementById("panel-type").textContent = typeLabels[d.type] || d.type;
+  document.getElementById("panel-name").textContent = d.label.replace(/\n/g, " ");
+
+  let infoHtml = '';
+  if (d.type === 'proprietaire') {
+    infoHtml = d.description || '';
+    if (d.n_parcelles) infoHtml += `<br><br><strong style="color:#c8b89a;">${d.n_parcelles} parcelle(s)</strong> · <strong style="color:#c8b89a;">${d.total_surface.toLocaleString().replace(/,/g, ' ')} m²</strong> au total`;
+    if (d.sector) infoHtml += `<br>Secteur : <em>${d.sector}</em>`;
+  } else {
+    infoHtml = d.info || '(pas d\'informations supplémentaires)';
+  }
+  document.getElementById("panel-info").innerHTML = infoHtml;
+
+  // Bloc Sources
+  const sourcesDiv = document.getElementById('panel-sources');
+  const sourcesList = document.getElementById('panel-sources-list');
+  if (d.type === 'proprietaire' && d.sources_urls && d.sources_urls.length > 0) {
+    sourcesDiv.style.display = 'block';
+    sourcesList.innerHTML = d.sources_urls.map(url => {
+      // Extraire le domaine pour un affichage propre
+      let domain = '';
+      try {
+        const u = new URL(url);
+        domain = u.hostname.replace(/^www\./, '');
+      } catch(e) { domain = url.substring(0, 40); }
+      // Tronquer le chemin pour l'affichage
+      let path = url.replace(/^https?:\/\/(www\.)?[^/]+/, '');
+      if (path.length > 60) path = path.substring(0, 60) + '…';
+      return `<div class="source-item"><a href="${url}" target="_blank" rel="noopener"><span class="source-domain">${domain}</span>${path}</a></div>`;
+    }).join('');
+  } else {
+    sourcesDiv.style.display = 'none';
+  }
+  
+  const parcellesDiv = document.getElementById('panel-parcelles');
+  const parcellesList = document.getElementById('panel-parcelles-list');
+  if (d.type === 'proprietaire' && d.parcelles && d.parcelles.length) {
+    parcellesDiv.style.display = 'block';
+    parcellesList.innerHTML = d.parcelles.map(pp =>
+      `<div class="parcelle-item"><strong>${pp.commune} · ${pp.parcelle}</strong> · ${pp.surface.toLocaleString().replace(/,/g, ' ')} m²<br><a href="${pp.lien_rf}" target="_blank">→ registre foncier</a></div>`
+    ).join('');
+  } else {
+    parcellesDiv.style.display = 'none';
+  }
+
+  const rels = DATA.links.filter(l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    return sId === d.id || tId === d.id;
+  });
+
+  const relHtml = rels.map(l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    const otherId = sId === d.id ? tId : sId;
+    const other = DATA.nodes.find(n => n.id === otherId);
+    if (!other) return '';
+    const col = colors[other.type]?.stroke || "#aaa";
+    return `<div class="relation-item">
+      <div class="rel-dot" style="border-color:${col}"></div>
+      <div class="rel-label">
+        <span class="rel-type">${l.label}</span>
+        ${other.label.replace(/\n/g, " ")}
+      </div>
+    </div>`;
+  }).join("");
+  document.getElementById("panel-relations").innerHTML = relHtml || "<p style='color:#444;font-size:11px;font-family:Arial'>Aucune relation directe.</p>";
+
+  document.getElementById("panel").classList.add("open");
+}
+
+function closePanel() {
+  document.getElementById("panel").classList.remove("open");
+}
+document.getElementById("panel-close").addEventListener("click", e => {
+  e.stopPropagation(); closePanel();
+});
+
+// Filtres par secteur
+let currentFilter = 'all';
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  if (btn.id === 'resetLayout') return;
+  btn.addEventListener("click", function() {
+    document.querySelectorAll(".filter-btn").forEach(b => {
+      if (b.id !== 'resetLayout') b.classList.remove("active");
+    });
+    this.classList.add("active");
+    currentFilter = this.dataset.filter;
+    applyFilter();
+  });
+});
+
+function applyFilter() {
+  if (currentFilter === "all") {
+    resetHighlight();
+    return;
+  }
+  const inCategory = new Set(DATA.nodes
+    .filter(n => n.category === currentFilter)
+    .map(n => n.id));
+  const relevant = new Set(inCategory);
+  DATA.nodes.forEach(n => {
+    if (n.owner_id && inCategory.has(n.owner_id)) relevant.add(n.id);
+  });
+  DATA.links.forEach(l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    if (inCategory.has(sId)) relevant.add(tId);
+    if (inCategory.has(tId)) relevant.add(sId);
+  });
+  node.classed("dimmed", n => !relevant.has(n.id));
+  link.classed("dimmed", l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    return !relevant.has(sId) || !relevant.has(tId);
+  });
+}
+
+// Recherche en direct
+document.getElementById('searchInput').addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  if (!q) { applyFilter(); return; }
+  const matchedIds = new Set(DATA.nodes
+    .filter(n => n.label.toLowerCase().includes(q) ||
+                 (n.description||'').toLowerCase().includes(q) ||
+                 (n.info||'').toLowerCase().includes(q))
+    .map(n => n.id));
+  const expanded = new Set(matchedIds);
+  DATA.nodes.forEach(n => {
+    if (n.owner_id && matchedIds.has(n.owner_id)) expanded.add(n.id);
+  });
+  DATA.links.forEach(l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    if (matchedIds.has(sId)) expanded.add(tId);
+    if (matchedIds.has(tId)) expanded.add(sId);
+  });
+  node.classed("dimmed", n => !expanded.has(n.id));
+  link.classed("dimmed", l => {
+    const sId = typeof l.source === 'object' ? l.source.id : l.source;
+    const tId = typeof l.target === 'object' ? l.target.id : l.target;
+    return !expanded.has(sId) || !expanded.has(tId);
+  });
+});
+
+// Le bouton Recentrer recadre simplement la vue (zoom/pan reset)
+document.getElementById('resetLayout').addEventListener('click', e => {
+  e.stopPropagation();
+  // Revenir à la vue initiale (montrer tout le réseau)
+  svg.transition().duration(800).call(zoom.transform, initialTransform);
+});
+</script>
+</body>
+</html>
