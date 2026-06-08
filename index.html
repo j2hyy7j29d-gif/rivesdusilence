@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Les rives du silence — Accueil</title>
+<title>Les rives du silence</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -14,118 +14,74 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 48px 24px;
   }
-  .container {
-    max-width: 640px;
-    width: 100%;
-    text-align: center;
-  }
+  .container { max-width: 760px; width: 100%; text-align: center; }
   .eyebrow {
-    font-size: 11px;
-    color: #666;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-bottom: 16px;
+    font-size: 11px; color: #666; letter-spacing: 0.25em;
+    text-transform: uppercase; margin-bottom: 18px;
   }
   h1 {
-    font-family: Georgia, serif;
-    font-weight: normal;
-    font-size: 38px;
-    line-height: 1.2;
-    margin-bottom: 16px;
-    color: #e8e0d0;
+    font-family: Georgia, serif; font-weight: normal; font-style: italic;
+    font-size: clamp(36px, 7vw, 52px); line-height: 1.1;
+    margin-bottom: 18px; color: #e8e0d0;
   }
   .lede {
-    font-size: 15px;
-    color: #888;
-    line-height: 1.6;
-    margin-bottom: 48px;
-    max-width: 480px;
-    margin-left: auto;
-    margin-right: auto;
+    font-size: 15px; color: #888; line-height: 1.65;
+    margin: 0 auto 52px; max-width: 30rem;
   }
   .cards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-top: 32px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
   }
   .card {
-    background: #14171e;
-    border: 1px solid #2a2d35;
-    border-radius: 8px;
-    padding: 32px 24px;
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.25s;
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    min-height: 200px;
+    background: #14171e; border: 1px solid #2a2d35; border-radius: 10px;
+    padding: 28px 24px; text-decoration: none; color: inherit;
+    transition: all 0.25s; text-align: left;
+    display: flex; flex-direction: column; min-height: 178px;
   }
-  .card:hover {
-    border-color: #6a6d75;
-    transform: translateY(-2px);
-    background: #181b22;
-  }
-  .card-icon {
-    font-size: 26px;
-    margin-bottom: 16px;
-    opacity: 0.6;
-  }
-  .card-title {
-    font-family: Georgia, serif;
-    font-size: 20px;
-    margin-bottom: 8px;
-    color: #e8e0d0;
-  }
-  .card-desc {
-    font-size: 12px;
-    color: #888;
-    line-height: 1.6;
-    flex-grow: 1;
-  }
-  .card-cta {
-    font-size: 11px;
-    color: #8aa9d4;
-    margin-top: 16px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  .footer {
-    margin-top: 48px;
-    font-size: 11px;
-    color: #444;
-  }
-  @media (max-width: 540px) {
-    h1 { font-size: 28px; }
-    .cards { grid-template-columns: 1fr; }
-  }
+  .card:hover { border-color: #6a6d75; transform: translateY(-2px); background: #181b22; }
+  .card-icon { font-size: 22px; margin-bottom: 14px; opacity: 0.55; }
+  .card-title { font-family: Georgia, serif; font-size: 19px; margin-bottom: 7px; color: #e8e0d0; }
+  .card-desc { font-size: 12.5px; color: #888; line-height: 1.55; flex-grow: 1; }
+  .card-cta { font-size: 10.5px; color: #8aa9d4; margin-top: 14px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .footer { margin-top: 44px; font-size: 11px; color: #444; }
+  @media (max-width: 600px) { .cards { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="container">
-  <div class="eyebrow">Recherche & Développement</div>
+  <div class="eyebrow">Raphael Delmuè · Master TRANSforme — HEAD Genève</div>
   <h1>Les rives du silence</h1>
-  <p class="lede">Cartographie des parcelles et de leurs propriétaires sur la rive du canton de Genève. Deux entrées : la visualisation en réseau et le tableau des parcelles.</p>
+  <p class="lede">Propriété, biodiversité et fortunes sur la rive genevoise du Léman. Une enquête en quatre entrées : le mémoire, la carte, le réseau et les parcelles.</p>
 
   <div class="cards">
+    <a class="card" href="memoire.html">
+      <div class="card-icon">&#10087;</div>
+      <div class="card-title">Le mémoire</div>
+      <div class="card-desc">« Bruiter le silence » — le texte intégral, en lecture web. Version PDF mise en page également disponible.</div>
+      <div class="card-cta">Lire &#8594;</div>
+    </a>
+    <a class="card" href="carte.html">
+      <div class="card-icon">&#11041;</div>
+      <div class="card-title">La carte</div>
+      <div class="card-desc">La planche cartographique : biodiversité, cadastre et réseaux de propriété superposés. Zoomable.</div>
+      <div class="card-cta">Explorer &#8594;</div>
+    </a>
     <a class="card" href="lombardi_reseau.html">
-      <div class="card-icon">◉</div>
-      <div class="card-title">Réseau Lombardi</div>
-      <div class="card-desc">Visualisation interactive du réseau de propriétaires, sociétés et liens entre parcelles.</div>
-      <div class="card-cta">Ouvrir →</div>
+      <div class="card-icon">&#9673;</div>
+      <div class="card-title">Le réseau</div>
+      <div class="card-desc">Visualisation interactive des liens entre propriétaires, sociétés et parcelles riveraines.</div>
+      <div class="card-cta">Ouvrir &#8594;</div>
     </a>
     <a class="card" href="parcelles_viewer.html">
-      <div class="card-icon">▤</div>
-      <div class="card-title">Parcelles</div>
-      <div class="card-desc">Tableau consultable des 190 parcelles enrichies : propriétaires, surfaces, secteurs, sources.</div>
-      <div class="card-cta">Ouvrir →</div>
+      <div class="card-icon">&#9636;</div>
+      <div class="card-title">Les parcelles</div>
+      <div class="card-desc">Tableau consultable des parcelles enrichies : propriétaires, surfaces, secteurs, sources.</div>
+      <div class="card-cta">Consulter &#8594;</div>
     </a>
   </div>
 
-  <div class="footer">Consultation en ligne — aucun téléchargement</div>
+  <div class="footer">Consultation en ligne — aucun téléchargement requis</div>
 </div>
 </body>
 </html>

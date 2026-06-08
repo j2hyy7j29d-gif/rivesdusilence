@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>La carte — Les rives du silence</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0a0d12;
+    color: #e8e0d0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Barre du haut */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 56px;
+    background: rgba(10, 13, 18, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #2a2d35;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px;
+    z-index: 100;
+  }
+  .topbar a.back {
+    color: #888; text-decoration: none; font-size: 13px;
+    transition: color 0.2s;
+  }
+  .topbar a.back:hover { color: #e8e0d0; }
+  .topbar .title {
+    font-family: Georgia, serif; font-size: 15px;
+    letter-spacing: 0.08em; color: #e8e0d0;
+  }
+
+  /* Zone de la carte */
+  #viewport {
+    position: fixed;
+    top: 56px; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    cursor: grab;
+    background:
+      radial-gradient(circle at 50% 40%, #11151c 0%, #0a0d12 100%);
+    touch-action: none;
+  }
+  #viewport.grabbing { cursor: grabbing; }
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  #canvas img {
+    display: block;
+    width: 2400px;   /* taille native du SVG */
+    height: 4150px;
+    /* fond clair derrière la carte pour la lisibilité */
+    background: #faf7f0;
+    box-shadow: 0 0 80px rgba(0,0,0,0.6);
+  }
+
+  /* Commandes de zoom */
+  .controls {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 100;
+  }
+  .controls button {
+    width: 44px; height: 44px;
+    background: rgba(20, 23, 30, 0.92);
+    border: 1px solid #2a2d35;
+    color: #e8e0d0;
+    font-size: 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+  }
+  .controls button:hover { background: #2a2d35; border-color: #4a4d55; }
+  .controls button:active { transform: scale(0.94); }
+
+  /* Indice d'aide */
+  .hint {
+    position: fixed;
+    bottom: 24px; left: 24px;
+    font-size: 11px; color: #555;
+    z-index: 100;
+    line-height: 1.5;
+    pointer-events: none;
+  }
+
+  /* Chargement */
+  .loader {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+    background: #0a0d12;
+    z-index: 200;
+    transition: opacity 0.5s;
+  }
+  .loader.hidden { opacity: 0; pointer-events: none; }
+  .loader .spinner {
+    width: 32px; height: 32px;
+    border: 2px solid #2a2d35;
+    border-top-color: #8aa9d4;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader .txt { font-size: 12px; color: #666; letter-spacing: 0.05em; }
+
+  @media (max-width: 640px) {
+    .hint { display: none; }
+    .topbar .title { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="back" href="index.html">← Accueil</a>
+  <span class="title">LA CARTE</span>
+  <span style="width:60px"></span>
+</div>
+
+<div id="viewport">
+  <div id="canvas">
+    <img id="map" src="carte_silence.svg" alt="Carte — Les rives du silence">
+  </div>
+</div>
+
+<div class="controls">
+  <button id="zoomIn" title="Zoomer">+</button>
+  <button id="zoomOut" title="Dézoomer">−</button>
+  <button id="reset" title="Réinitialiser" style="font-size:14px">⟲</button>
+</div>
+
+<div class="hint">
+  Molette pour zoomer · glisser pour déplacer<br>
+  Double-clic pour zoomer rapidement
+</div>
+
+<div class="loader" id="loader">
+  <div class="spinner"></div>
+  <div class="txt">Chargement de la carte…</div>
+</div>
+
+<script>
+(function() {
+  const viewport = document.getElementById('viewport');
+  const canvas = document.getElementById('canvas');
+  const img = document.getElementById('map');
+  const loader = document.getElementById('loader');
+
+  const NATIVE_W = 2400, NATIVE_H = 4150;
+
+  let scale = 1, tx = 0, ty = 0;
+  let minScale = 0.1, maxScale = 8;
+
+  function apply() {
+    canvas.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  }
+
+  // Ajuster la carte pour qu'elle tienne dans la hauteur au départ
+  function fitToScreen() {
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    // on cale sur la largeur visible avec un peu de marge
+    const scaleW = vw / NATIVE_W;
+    const scaleH = vh / NATIVE_H;
+    scale = Math.min(scaleW, scaleH) * 0.95;
+    minScale = scale * 0.5;
+    // centrer
+    tx = (vw - NATIVE_W * scale) / 2;
+    ty = (vh - NATIVE_H * scale) / 2;
+    apply();
+  }
+
+  // Zoom centré sur un point (px, py) du viewport
+  function zoomAt(px, py, factor) {
+    const newScale = Math.max(minScale, Math.min(maxScale, scale * factor));
+    const ratio = newScale / scale;
+    tx = px - (px - tx) * ratio;
+    ty = py - (py - ty) * ratio;
+    scale = newScale;
+    apply();
+  }
+
+  // Molette
+  viewport.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    zoomAt(px, py, factor);
+  }, { passive: false });
+
+  // Glisser souris
+  let dragging = false, lastX = 0, lastY = 0;
+  viewport.addEventListener('mousedown', function(e) {
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    viewport.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    tx += e.clientX - lastX;
+    ty += e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    apply();
+  });
+  window.addEventListener('mouseup', function() {
+    dragging = false; viewport.classList.remove('grabbing');
+  });
+
+  // Double-clic = zoom
+  viewport.addEventListener('dblclick', function(e) {
+    const rect = viewport.getBoundingClientRect();
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, 1.8);
+  });
+
+  // Tactile : un doigt = déplacer, deux doigts = pincer
+  let touchMode = null, lastDist = 0, lastMid = {x:0, y:0};
+  function dist(t1, t2) {
+    return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+  }
+  function mid(t1, t2) {
+    return { x: (t1.clientX + t2.clientX)/2, y: (t1.clientY + t2.clientY)/2 };
+  }
+  viewport.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+      touchMode = 'pan';
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      touchMode = 'pinch';
+      lastDist = dist(e.touches[0], e.touches[1]);
+      lastMid = mid(e.touches[0], e.touches[1]);
+    }
+  }, { passive: false });
+  viewport.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    if (touchMode === 'pan' && e.touches.length === 1) {
+      tx += e.touches[0].clientX - lastX;
+      ty += e.touches[0].clientY - lastY;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      apply();
+    } else if (touchMode === 'pinch' && e.touches.length === 2) {
+      const d = dist(e.touches[0], e.touches[1]);
+      const m = mid(e.touches[0], e.touches[1]);
+      const px = m.x - rect.left, py = m.y - rect.top;
+      zoomAt(px, py, d / lastDist);
+      // déplacement du milieu = pan simultané
+      tx += m.x - lastMid.x;
+      ty += m.y - lastMid.y;
+      apply();
+      lastDist = d; lastMid = m;
+    }
+  }, { passive: false });
+  viewport.addEventListener('touchend', function(e) {
+    if (e.touches.length === 0) touchMode = null;
+    else if (e.touches.length === 1) {
+      touchMode = 'pan';
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    }
+  });
+
+  // Boutons
+  function centerZoom(factor) {
+    zoomAt(viewport.clientWidth/2, viewport.clientHeight/2, factor);
+  }
+  document.getElementById('zoomIn').onclick = () => centerZoom(1.3);
+  document.getElementById('zoomOut').onclick = () => centerZoom(1/1.3);
+  document.getElementById('reset').onclick = fitToScreen;
+
+  window.addEventListener('resize', fitToScreen);
+
+  // Quand l'image est chargée
+  img.onload = function() {
+    loader.classList.add('hidden');
+    fitToScreen();
+  };
+  // Si déjà en cache
+  if (img.complete && img.naturalWidth) {
+    loader.classList.add('hidden');
+    fitToScreen();
+  }
+})();
+</script>
+</body>
+</html>
