@@ -53,8 +53,8 @@
   }
   #canvas img {
     display: block;
-    width: 2400px;   /* taille native du SVG */
-    height: 4150px;
+    width: 3500px;   /* taille native de l'image */
+    height: 4948px;
     /* fond clair derrière la carte pour la lisibilité */
     background: #faf7f0;
     box-shadow: 0 0 80px rgba(0,0,0,0.6);
@@ -128,7 +128,7 @@
 
 <div id="viewport">
   <div id="canvas">
-    <img id="map" src="carte_silence.svg" alt="Carte — Les rives du silence">
+    <img id="map" src="carte_silence.jpg" alt="Carte — Les rives du silence">
   </div>
 </div>
 
@@ -155,7 +155,7 @@
   const img = document.getElementById('map');
   const loader = document.getElementById('loader');
 
-  const NATIVE_W = 2400, NATIVE_H = 4150;
+  const NATIVE_W = 3500, NATIVE_H = 4948;
 
   let scale = 1, tx = 0, ty = 0;
   let minScale = 0.1, maxScale = 8;
