@@ -416,7 +416,11 @@
   <div class="parcelles-list" id="panel-parcelles" style="display:none;">
     <h4>Parcelles riveraines</h4>
     <div id="panel-parcelles-list"></div>
-  </div>
+  </div>      <div style="margin-top:1.5rem; padding-top:1.5rem; border-top:1px solid #1e2028;">
+        <button id="sv-button" onclick="showStreetView(currentNodeId)" style="width:100%; padding:0.75rem; background:#1a1d24; border:1px solid #2a2d35; color:#9a8962; cursor:pointer; font-family:Georgia, serif; font-size:0.9rem;">
+          📸 Portail Street View
+        </button>
+      </div>
   <div class="sources-list" id="panel-sources" style="display:none;">
     <h4>Sources</h4>
     <div id="panel-sources-list"></div>
@@ -894,6 +898,7 @@ function openPanel(d) {
   }
   
   const parcellesDiv = document.getElementById('panel-parcelles');
+  let currentNodeId = null;
   const parcellesList = document.getElementById('panel-parcelles-list');
   if (d.type === 'proprietaire' && d.parcelles && d.parcelles.length) {
     parcellesDiv.style.display = 'block';
@@ -1011,5 +1016,35 @@ document.getElementById('resetLayout').addEventListener('click', e => {
   svg.transition().duration(800).call(zoom.transform, initialTransform);
 });
 </script>
+
+  <!-- Modal Street View -->
+  <div id="sv-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); z-index:10000; align-items:center; justify-content:center;">
+    <div style="background:#0a0d12; border:1px solid #2a2d35; padding:2rem; max-width:600px; position:relative;">
+      <button onclick="document.getElementById('sv-modal').style.display='none'" style="position:absolute; top:1rem; right:1rem; background:none; border:none; color:#e8e0d0; font-size:2rem; cursor:pointer;">&times;</button>
+      <img id="sv-image" style="width:100%; height:auto; margin-bottom:1rem;">
+      <p id="sv-label" style="color:#888; font-size:0.9rem; text-align:center; font-style:italic;"></p>
+    </div>
+  </div>
+
+  <script>
+    function showStreetView(parcelId) {
+      const key = parcelId.replace(':', '_');
+      const imgPath = 'streetview_captures/' + key + '.jpg';
+      const img = document.getElementById('sv-image');
+      const label = document.getElementById('sv-label');
+      
+      img.onerror = () => {
+        label.textContent = 'Pas de capture disponible';
+        img.style.display = 'none';
+      };
+      img.onload = () => {
+        label.textContent = parcelId + ' · vue depuis la rue';
+        img.style.display = 'block';
+        document.getElementById('sv-modal').style.display = 'flex';
+      };
+      img.src = imgPath;
+    }
+  </script>
+
 </body>
 </html>
