@@ -810,7 +810,7 @@ const active=new Set(Object.keys(FAM));
 function mk(r){
   const col=(FAM[r.fam]||FAM.nonrens).c;
   const m=L.circleMarker([r.lat,r.lon],{radius:7,color:'#0a0d12',weight:1.5,fillColor:col,fillOpacity:.9});
-  m.bindPopup('<b>'+(r.owner||'—')+'</b><br>'+r.commune+' '+r.parcelle+' · '+(r.surface||'?')+' m²');
+  m.bindPopup('<b>'+r.commune+' '+r.parcelle+'</b><br>'+(r.surface||'?')+' m²');
   m.on('click',()=>openPanel(r));
   return m;
 }
@@ -838,9 +838,10 @@ function openPanel(r){
   document.getElementById('panelContent').innerHTML=
    '<button class="close" onclick="closePanel()">×</button>'+
    '<p class="eyebrow">'+esc(r.commune)+'</p>'+
-   '<h2 class="pname">'+esc(r.owner||'Propriétaire non identifié')+'</h2>'+
+   '<h2 class="pname">'+esc(r.commune+' '+r.parcelle)+'</h2>'+
    '<p class="pmeta">Parcelle '+esc(r.ideddp)+' · '+esc(r.surface||'?')+' m²</p>'+
    '<div style="margin-bottom:16px"><span class="sectChip"><span class="dot" style="background:'+fam.c+'"></span>'+esc(r.secteur||fam.l)+'</span></div>'+
+   '<div style="margin-bottom:16px; border-radius:4px; overflow:hidden; background:#1a1d24;"><img src="streetview_captures/'+r.cdcm+'_'+r.parcelle+'.jpg" style="width:100%; height:auto; display:block;" onerror="this.style.display=\'none\';" alt="Vue Street View"></div>'+
    ns+
    (r.profil?'<div class="sec-h">Profil</div><p class="profil">'+esc(r.profil)+'</p>':'')+
    (r.network_desc&&r.network_desc!==r.profil?'<p class="profil" style="color:var(--mut)">'+esc(r.network_desc)+'</p>':'')+
